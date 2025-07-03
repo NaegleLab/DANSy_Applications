@@ -1,0 +1,23 @@
+Comparison,variable,value
+Naive_v_Prime,Network Separation,0.19453591937185055
+Prime_v_CK666,Network Separation,0.18251344719866713
+Naive_v_Prime,NS Cohen,-1.691611801072056
+Prime_v_CK666,NS Cohen,-1.1086596115701874
+Naive_v_Prime,IQR Cohen,0.5610154599680859
+Prime_v_CK666,IQR Cohen,0.33151685412244336
+Naive_v_Prime,NS Statistic,8803.0
+Prime_v_CK666,NS Statistic,7781.0
+Naive_v_Prime,NS p,1.528652152569236e-20
+Prime_v_CK666,NS p,1.0918535720565587e-11
+Naive_v_Prime,IQR Statistic,1827.0
+Prime_v_CK666,IQR Statistic,2834.0
+Naive_v_Prime,IQR p,9.070522494178912e-15
+Prime_v_CK666,IQR p,1.2154388166891524e-07
+Naive_v_Prime,IQR p_log,14.042367695321051
+Prime_v_CK666,IQR p_log,6.91526689798318
+Naive_v_Prime,NS p_log,19.815691327803073
+Prime_v_CK666,NS p_log,10.961835600744694
+Naive_v_Prime,NS_FPR,0.06
+Prime_v_CK666,NS_FPR,0.2
+Naive_v_Prime,IQR_FPR,0.0
+Prime_v_CK666,IQR_FPR,0.04

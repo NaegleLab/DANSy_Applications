@@ -1,0 +1,23 @@
+Comparison,variable,value
+2-4dyn_v_0dyn,Network Separation,0.015557463112668035
+0-5dyn_v_0dyn,Network Separation,0.1388422486216374
+2-4dyn_v_0dyn,NS Cohen,-2.6448126793631954
+0-5dyn_v_0dyn,NS Cohen,-1.8237261314379132
+2-4dyn_v_0dyn,IQR Cohen,0.6549314694180761
+0-5dyn_v_0dyn,IQR Cohen,-0.009330294921910086
+2-4dyn_v_0dyn,NS Statistic,9561.0
+0-5dyn_v_0dyn,NS Statistic,9002.0
+2-4dyn_v_0dyn,NS p,7.739987893635559e-29
+0-5dyn_v_0dyn,NS p,1.4103012256701596e-22
+2-4dyn_v_0dyn,IQR Statistic,838.0
+0-5dyn_v_0dyn,IQR Statistic,2415.0
+2-4dyn_v_0dyn,IQR p,2.7504729138072297e-24
+0-5dyn_v_0dyn,IQR p,2.7026879581370305e-10
+2-4dyn_v_0dyn,IQR p_log,23.560592627551873
+0-5dyn_v_0dyn,IQR p_log,9.568204093362356
+2-4dyn_v_0dyn,NS p_log,28.11125971861057
+0-5dyn_v_0dyn,NS p_log,21.850688116653558
+2-4dyn_v_0dyn,NS_FPR,0.0
+0-5dyn_v_0dyn,NS_FPR,0.04
+2-4dyn_v_0dyn,IQR_FPR,0.0
+0-5dyn_v_0dyn,IQR_FPR,0.06

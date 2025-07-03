@@ -1,0 +1,23 @@
+Comparison,variable,value
+Diff_v_Undiff,Network Separation,0.13194043191219773
+Float_v_Diff,Network Separation,0.32585208374505337
+Diff_v_Undiff,NS Cohen,-1.6315215264844374
+Float_v_Diff,NS Cohen,-2.2396374308138083
+Diff_v_Undiff,IQR Cohen,1.014383661047192
+Float_v_Diff,IQR Cohen,0.41788812370624534
+Diff_v_Undiff,NS Statistic,8776.0
+Float_v_Diff,NS Statistic,9416.0
+Diff_v_Undiff,NS p,2.835218947232793e-20
+Float_v_Diff,NS p,3.889026702080125e-27
+Diff_v_Undiff,IQR Statistic,874.0
+Float_v_Diff,IQR Statistic,1757.0
+Diff_v_Undiff,IQR p,6.758782013832624e-24
+Float_v_Diff,IQR p,2.324294070620327e-15
+Diff_v_Undiff,IQR p_log,23.170131560320268
+Float_v_Diff,IQR p_log,14.633708925692984
+Diff_v_Undiff,NS p_log,19.54741339747534
+Float_v_Diff,NS p_log,26.410159074973848
+Diff_v_Undiff,NS_FPR,0.04
+Float_v_Diff,NS_FPR,0.0
+Diff_v_Undiff,IQR_FPR,0.0
+Float_v_Diff,IQR_FPR,0.0

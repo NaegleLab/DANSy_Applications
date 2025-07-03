@@ -1,0 +1,12 @@
+Comparison,variable,value
+soft_stiff,Network Separation,0.27270312331277524
+soft_stiff,NS Cohen,-2.968485137384592
+soft_stiff,IQR Cohen,0.40340999090629515
+soft_stiff,NS Statistic,9821.0
+soft_stiff,NS p,5.046771206402108e-32
+soft_stiff,IQR Statistic,2914.0
+soft_stiff,IQR p,3.4747786730303533e-07
+soft_stiff,IQR p_log,6.459072852697688
+soft_stiff,NS p_log,31.296986383407653
+soft_stiff,NS_FPR,0.0
+soft_stiff,IQR_FPR,0.02

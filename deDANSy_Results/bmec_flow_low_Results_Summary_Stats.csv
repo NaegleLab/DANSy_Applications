@@ -1,0 +1,34 @@
+Comparison,variable,value
+0-5dyn_v_0-01dyn,Network Separation,0.45980039853592247
+2-4dyn_v_0-01dyn,Network Separation,0.4090916764012775
+0-01dyn_v_0dyn,Network Separation,0.15879043065430887
+0-5dyn_v_0-01dyn,NS Cohen,-0.41461851805701344
+2-4dyn_v_0-01dyn,NS Cohen,-1.3001922012413372
+0-01dyn_v_0dyn,NS Cohen,-2.1346390956210626
+0-5dyn_v_0-01dyn,IQR Cohen,0.9368137393192196
+2-4dyn_v_0-01dyn,IQR Cohen,1.1317833552795757
+0-01dyn_v_0dyn,IQR Cohen,0.044073870656886956
+0-5dyn_v_0-01dyn,NS Statistic,6103.0
+2-4dyn_v_0-01dyn,NS Statistic,8229.0
+0-01dyn_v_0dyn,NS Statistic,9329.0
+0-5dyn_v_0-01dyn,NS p,0.007063485809794635
+2-4dyn_v_0-01dyn,NS p,3.058867315686588e-15
+0-01dyn_v_0dyn,NS p,3.841908470480693e-26
+0-5dyn_v_0-01dyn,IQR Statistic,1787.0
+2-4dyn_v_0-01dyn,IQR Statistic,1276.0
+0-01dyn_v_0dyn,IQR Statistic,2984.0
+0-5dyn_v_0-01dyn,IQR p,4.180763401913262e-15
+2-4dyn_v_0-01dyn,IQR p,9.204563676103558e-20
+0-01dyn_v_0dyn,IQR p,8.451135015093161e-07
+0-5dyn_v_0-01dyn,IQR p_log,14.37874440938117
+2-4dyn_v_0-01dyn,IQR p_log,19.035996793531694
+0-01dyn_v_0dyn,IQR p_log,6.073084959962823
+0-5dyn_v_0-01dyn,NS p_log,2.1509809229775754
+2-4dyn_v_0-01dyn,NS p_log,14.514439360973775
+0-01dyn_v_0dyn,NS p_log,25.415452985970596
+0-5dyn_v_0-01dyn,NS_FPR,0.74
+2-4dyn_v_0-01dyn,NS_FPR,0.04
+0-01dyn_v_0dyn,NS_FPR,0.06
+0-5dyn_v_0-01dyn,IQR_FPR,0.0
+2-4dyn_v_0-01dyn,IQR_FPR,0.0
+0-01dyn_v_0dyn,IQR_FPR,0.1

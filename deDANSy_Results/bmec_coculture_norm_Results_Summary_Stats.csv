@@ -1,0 +1,23 @@
+Comparison,variable,value
+AP_v_iNeural,Network Separation,0.5290824021173337
+iNeural_v_no,Network Separation,0.5391253933989839
+AP_v_iNeural,NS Cohen,-0.3757334755387346
+iNeural_v_no,NS Cohen,-0.28822725585654746
+AP_v_iNeural,IQR Cohen,0.1365063905577117
+iNeural_v_no,IQR Cohen,0.9206752978976042
+AP_v_iNeural,NS Statistic,5912.0
+iNeural_v_no,NS Statistic,5902.0
+AP_v_iNeural,NS p,0.025937319264657428
+iNeural_v_no,NS p,0.02761483659528761
+AP_v_iNeural,IQR Statistic,3489.0
+iNeural_v_no,IQR Statistic,2085.0
+AP_v_iNeural,IQR p,0.00022360355775589614
+iNeural_v_no,IQR p,1.0694722670345005e-12
+AP_v_iNeural,IQR p_log,3.650521290671744
+iNeural_v_no,IQR p_log,11.970830472831626
+AP_v_iNeural,NS p_log,1.5860749121659212
+iNeural_v_no,NS p_log,1.5588575222746286
+AP_v_iNeural,NS_FPR,0.74
+iNeural_v_no,NS_FPR,0.66
+AP_v_iNeural,IQR_FPR,0.3
+iNeural_v_no,IQR_FPR,0.02

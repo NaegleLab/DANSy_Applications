@@ -1,0 +1,12 @@
+Comparison,variable,value
+AP_v_no,Network Separation,0.13931354978189914
+AP_v_no,NS Cohen,-1.8886381779426005
+AP_v_no,IQR Cohen,0.7532841206579619
+AP_v_no,NS Statistic,9025.0
+AP_v_no,NS p,8.082746077105678e-23
+AP_v_no,IQR Statistic,2692.0
+AP_v_no,IQR p,1.7191683825900254e-08
+AP_v_no,IQR p_log,7.764681584599529
+AP_v_no,NS p_log,22.092441064532395
+AP_v_no,NS_FPR,0.02
+AP_v_no,IQR_FPR,0.1

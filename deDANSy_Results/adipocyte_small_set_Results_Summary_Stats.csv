@@ -1,0 +1,45 @@
+Comparison,variable,value
+Float_v_TW,Network Separation,0.5887410181155752
+Float_v_Explant,Network Separation,0.4280979494075132
+Float_v_Fresh,Network Separation,0.13199212013645
+Explant_v_Whole,Network Separation,0.045576003292724154
+Float_v_TW,NS Cohen,-0.7261479273247523
+Float_v_Explant,NS Cohen,0.03496155001092701
+Float_v_Fresh,NS Cohen,-3.0465970735194245
+Explant_v_Whole,NS Cohen,-3.3667745164957643
+Float_v_TW,IQR Cohen,0.6517366600207355
+Float_v_Explant,IQR Cohen,1.654664928385002
+Float_v_Fresh,IQR Cohen,1.2275063494263843
+Explant_v_Whole,IQR Cohen,0.2567403295019522
+Float_v_TW,NS Statistic,6832.0
+Float_v_Explant,NS Statistic,4936.0
+Float_v_Fresh,NS Statistic,9836.0
+Explant_v_Whole,NS Statistic,9969.0
+Float_v_TW,NS p,7.63874458000028e-06
+Float_v_Explant,NS p,0.8766989701910175
+Float_v_Fresh,NS p,3.2652185994750007e-32
+Explant_v_Whole,NS p,6.484371869888858e-34
+Float_v_TW,IQR Statistic,2240.0
+Float_v_Explant,IQR Statistic,1557.0
+Float_v_Fresh,IQR Statistic,692.0
+Explant_v_Whole,IQR Statistic,2760.0
+Float_v_TW,IQR p,1.5565033867829217e-11
+Float_v_Explant,IQR p,4.0526214242703533e-17
+Float_v_Fresh,IQR p,6.633351020761268e-26
+Explant_v_Whole,IQR p,4.450616625976098e-08
+Float_v_TW,IQR p_log,10.807849930002645
+Float_v_Explant,IQR p_log,16.392263963993187
+Float_v_Fresh,IQR p_log,25.178267020288533
+Explant_v_Whole,IQR p_log,7.35157981402884
+Float_v_TW,NS p_log,5.116978011421592
+Float_v_Explant,NS p_log,0.057149503586670015
+Float_v_Fresh,NS p_log,31.486087738319146
+Explant_v_Whole,NS p_log,33.18813208691271
+Float_v_TW,NS_FPR,0.5
+Float_v_Explant,NS_FPR,0.96
+Float_v_Fresh,NS_FPR,0.0
+Explant_v_Whole,NS_FPR,0.0
+Float_v_TW,IQR_FPR,0.0
+Float_v_Explant,IQR_FPR,0.0
+Float_v_Fresh,IQR_FPR,0.0
+Explant_v_Whole,IQR_FPR,0.02
