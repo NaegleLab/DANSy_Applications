@@ -3,7 +3,11 @@
 
 This is our analysis that applies the linguistic technique n-gram analysis with network theory to protein domain architectures, to represent the proteome as an abstracts the functional connections between proteins to describe either proteome-wide (base DANSy) or phenotype-specific changes from differential expression results (deDANSy). 
 
+### DANSy Overview
 ![Overview of the general workflow](Figures/N%20gram%20network%20workflow.png)
+
+### deDANSy Overview
+![Overview of the deDANSy workflow](Figures/deDANSy%20Overview.png)
 
 How to cite: Please cite our [bioRxiv paper](https://doi.org/10.1101/2024.12.04.626803), which contains further details on the methods and their applications. Here, we provide the code that produces the results and figures from the manuscript.
 
