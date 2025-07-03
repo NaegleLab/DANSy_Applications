@@ -1,0 +1,22 @@
+name: dansy_apps
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.9
+  - numpy
+  - pandas
+  - scipy
+  - networkx
+  - tqdm
+  - matplotlib
+  - seaborn
+  - lifelines
+  - pip
+  - ipython
+  - pygraphviz
+  - plotly
+  - ipykernel
+  - gseapy
+  - pip:
+    - pybiomart
