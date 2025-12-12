@@ -6,6 +6,7 @@ import ngramUtilities
 from pybiomart import Dataset
 import math
 from tqdm import tqdm
+import liftover
 
 def retrieve_cancer_fusion_data(fusion_db,cancertype):
     '''
@@ -26,8 +27,8 @@ def retrieve_cancer_fusion_data(fusion_db,cancertype):
     '''
     cancer_fusion_data = fusion_db.copy()
     cancer_fusion_data = cancer_fusion_data[cancer_fusion_data['Highly_Reliable_Seq'] == 'Seq+']
-    cancer_fusion_data = cancer_fusion_data[cancer_fusion_data['Frame'] == 'In-Frame']
-    cancer_fusion_data = cancer_fusion_data[cancer_fusion_data['Genome_Build_Version'] == 'hg38']
+    cancer_fusion_data = cancer_fusion_data[cancer_fusion_data['Frame'] != 'Out-of-Frame']
+    #cancer_fusion_data = cancer_fusion_data[cancer_fusion_data['Genome_Build_Version'] == 'hg38']
     cancer_fusion_data = cancer_fusion_data[cancer_fusion_data['Cancertype'].isin(cancertype)]
     cancer_fusion_data.drop_duplicates(inplace=True)
 
@@ -704,19 +705,6 @@ def perform_fusion_analysis(fusion_db,cancertype,conv_df,dataset,ref_data,fusion
     G = nx.from_pandas_adjacency(adj_df)
     seeds = nAU.create_iteration_seeds(k = 100, seed = 882) #Will change these later for user decisions
     G = nAU.simplify_network(G)
-    if soft_clust_flag:
-        print('Performing soft clustering on the reference network')
-        comm_check = nAU.generate_community_reference(G, seeds[0:50])
-        orig_comm_info = nAU.extract_comm_iter_info(comm_check,50)
-        comm_check_2 = nAU.generate_community_reference(G, seeds[50:100])
-        orig_comm_info_2 = nAU.extract_comm_iter_info(comm_check_2,50)
-        
-        # Soft cluster results for the reference
-        comp_freq = nAU.get_node_soft_clust_res(orig_comm_info,50)
-        comp_freq_2 = nAU.get_node_soft_clust_res(orig_comm_info_2,50)
-        t = nAU.get_freq_diff_noise_thres(comp_freq, comp_freq_2)
-    else:
-        print('No soft clustering being performed.')
     # Getting the basic inputs of the fusions
     fusion_data = retrieve_cancer_fusion_data(fusion_db,cancertype)
 
@@ -777,36 +765,8 @@ def perform_fusion_analysis(fusion_db,cancertype,conv_df,dataset,ref_data,fusion
     print('Reduced the network change calculation to %s unique architectures from %s.'%(len(rep_pt_check), len(pt_check)))
     
     print('Determining changes in the fusion network')
-    gross_changes, pt_comm = calc_fusion_network_changes(rep_pt_check,adj_df,removed_ngrams,proteome_gross_topo, soft_cluster_flag= soft_clust_flag)
+    gross_changes, pt_comm = calc_fusion_network_changes(rep_pt_check,adj_df,removed_ngrams,proteome_gross_topo)
     fusion_categories_ammended = summarize_fusion_gross_changes(pt_check, uni_archs, cancertype, gross_changes, fusion_categories)
     
-    # This is the soft clustering analysis
-    if soft_clust_flag:
-        diff_alt = {k:{} for k in cancertype}
-  
-        for pt in pt_comm:
-            comm_for_check = pt_comm[pt]
-            fusion_arch = pt_check[pt]['Interpro Domain Architecture']
-            arch_count = uni_archs[fusion_arch]['Count']
-            node_freq_pt = nAU.get_node_soft_clust_res(comm_for_check, 50)
-            temp_comp = nAU.calc_soft_clust_membership_diff(node_freq_pt, comp_freq)
-            diff_comms = nAU.compare_soft_cluster_freq(comp_freq, node_freq_pt, thres=t)
-            for c in diff_comms:
-                for inner_pt in uni_archs[fusion_arch]['Patients']:
-                    pt_cancer = pt_check[inner_pt]['Cancer Type']
-                    if c not in diff_alt[pt_cancer]:
-                        diff_alt[pt_cancer][c] = 1
-                    else:    
-                        diff_alt[pt_cancer][c] += 1
-            
-            '''# Try to grab the fusion gene information
-            if fusion_arch in temp_comp:    
-                fusion_comm = temp_comp[fusion_arch]
-                for c in fusion_comm:
-                    if c not in diff_alt.index:
-                        diff_alt.loc[c] = 0
-                    diff_alt.loc[c, 'Fusion Count'] += arch_count'''
-    else:
-        diff_alt = {}
-    return fusion_categories_ammended, pt_check, pt_comm, diff_alt
+    return fusion_categories_ammended, pt_check, pt_comm
 
