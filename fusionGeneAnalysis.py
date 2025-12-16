@@ -7,6 +7,9 @@ from pybiomart import Dataset
 import math
 from tqdm import tqdm
 import liftover
+import os
+
+CHROMOSOMES = [str(x) for x in np.arange(1,23)] + ['X','Y','MT']
 
 def retrieve_cancer_fusion_data(fusion_db,cancertype):
     '''
@@ -138,7 +141,7 @@ def get_pt_fusion(cancer_fusion_data, ensembl_dict):
         - pt_check: dict
             - dict containing the patient information including fusion gene locations and breakpoints along with very basic patient information.
     '''
-    acceptable_chromosomes = [str(x) for x in np.arange(1,23)] + ['X','Y','MT']
+    
     pt_check = {}
     for idx, row in cancer_fusion_data.iterrows():
         five_gene = {'Gene':row['H_gene'],
@@ -156,7 +159,7 @@ def get_pt_fusion(cancer_fusion_data, ensembl_dict):
         
         # Gene checks to ensure can be used in downstream analysis
         can_convert = (five_gene['Gene'] in ensembl_dict.keys()) and (three_gene['Gene'] in ensembl_dict.keys())
-        chrom_acceptable = (five_gene['Chromosome'] in acceptable_chromosomes) and (three_gene['Chromosome'] in acceptable_chromosomes)
+        chrom_acceptable = (five_gene['Chromosome'] in CHROMOSOMES) and (three_gene['Chromosome'] in CHROMOSOMES)
 
 
         # Making sure the gene is included in the ensembl conversion otherwise removing the pt from analysis
@@ -653,7 +656,7 @@ def summarize_fusion_gross_changes(pt_check, uni_archs, cancertype, gross_change
 
     return fusion_categories
 
-def retrieve_ensembl_exon_data(dataset, fusion_ensembl):
+def retrieve_ensembl_exon_data(filename, dataset:Dataset = None):
     '''
     Retrieves the ensembl ID information. It will query Ensembl multiple times if necessary due to a large number of IDs whose information needs to be retrieved.
 
@@ -669,23 +672,23 @@ def retrieve_ensembl_exon_data(dataset, fusion_ensembl):
         - gene_pos_info: pandas DataFrame
             - dataframe containing all exon position, coding sequence, strand, and exon length.
     '''
-    if len(fusion_ensembl) <= 200:
-        gene_pos_info = dataset.query(attributes=['ensembl_gene_id','exon_chrom_start','exon_chrom_end','cds_start','strand','transcript_length','cds_end'],filters = {'link_ensembl_gene_id':fusion_ensembl,'transcript_is_canonical':True})
-    else:
-        print('Need to split the ensembl list')
-        gene_pos_info = pd.DataFrame()
-        k = math.ceil(len(fusion_ensembl)/200)
-        print('Will query ensembl %s times'%k)
-        for x in range(0,k):
-            temp_ensembl = fusion_ensembl[x*200:min([(x+1)*200,len(fusion_ensembl)])]
-            temp_pos = dataset.query(attributes=['ensembl_gene_id','exon_chrom_start','exon_chrom_end','cds_start','strand','transcript_length','cds_end'],filters = {'link_ensembl_gene_id':temp_ensembl,'transcript_is_canonical':True})
-            gene_pos_info = pd.concat([gene_pos_info, temp_pos], ignore_index=True)
-        gene_pos_info.drop_duplicates(inplace=True)
-        gene_pos_info.reset_index(drop=True)
-    
-    return gene_pos_info
 
-def perform_fusion_analysis(fusion_db,cancertype,conv_df,dataset,ref_data,fusion_categories = {}, soft_clust_flag = 0):
+    # First check if the file exists that should contain all the exon information.
+    if os.path.exists(filename):
+        exon_information = pd.read_csv(filename)
+    else:
+        
+        # If the file does not exist check if a pybiomart Dataset has been provided otherwise make a new one.
+        if dataset == None:
+            dataset = Dataset(host = 'http://useast.ensembl.org', name='hsapiens_gene_ensembl')
+    
+        exon_information = dataset.query(attributes=['ensembl_gene_id','exon_chrom_start','exon_chrom_end','cds_start','strand','transcript_length','cds_end'],
+                                      filters = {'chromosome_name':CHROMOSOMES, 'transcript_is_canonical':True})
+        exon_information.to_csv(filename, index=False)
+
+    return exon_information
+
+def perform_fusion_analysis(fusion_db,cancertype,conv_df,dataset,ref_data,fusion_categories = {}):
     '''
     The main function that goes through each step of the fusion analysis for patients of a specific cancer type. Note for multiple cancer types it is recommended to limit only to 3 due to the ensembl querying during the analysis.
 
