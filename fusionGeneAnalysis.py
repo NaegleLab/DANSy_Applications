@@ -138,6 +138,7 @@ def get_pt_fusion(cancer_fusion_data, ensembl_dict):
         - pt_check: dict
             - dict containing the patient information including fusion gene locations and breakpoints along with very basic patient information.
     '''
+    acceptable_chromosomes = [str(x) for x in np.arange(1,23)] + ['X','Y','MT']
     pt_check = {}
     for idx, row in cancer_fusion_data.iterrows():
         five_gene = {'Gene':row['H_gene'],
@@ -152,8 +153,14 @@ def get_pt_fusion(cancer_fusion_data, ensembl_dict):
                     'Strand':row['T_strand'],
                     'Fusion pos':3
                     }
+        
+        # Gene checks to ensure can be used in downstream analysis
+        can_convert = (five_gene['Gene'] in ensembl_dict.keys()) and (three_gene['Gene'] in ensembl_dict.keys())
+        chrom_acceptable = (five_gene['Chromosome'] in acceptable_chromosomes) and (three_gene['Chromosome'] in acceptable_chromosomes)
+
+
         # Making sure the gene is included in the ensembl conversion otherwise removing the pt from analysis
-        if (five_gene['Gene'] in ensembl_dict.keys()) and (three_gene['Gene'] in ensembl_dict.keys()):
+        if can_convert and chrom_acceptable:
             pos_check = {'Genes':{ensembl_dict[five_gene['Gene']]:five_gene,
                     ensembl_dict[three_gene['Gene']]:three_gene},
                     'Fusion Protein':row['Fusion_pair'],
@@ -187,10 +194,15 @@ def get_pt_exons(pt_check, exon_info):
     # For some patients they use hte old build of the human genome, while the pybiomart database uses the current build so creating a liftover object to convert coordinates.
     mismatch_flag = 0
     mismatch_cnt = 0
+
+    # Setting up a converter for the human genome
+    converter = liftover.get_lifter('hg19', 'hg38', one_based=True)
+
+
     for pt in pt_check:
         pt_OI = pt_check[pt]
         pt_exon_check[pt] = {}
-        
+        genome = pt_OI['Genome Build']
         # Running through each member of the fusion gene and getting their information
         for transcript in pt_OI['Genes']:
             gene_OI = pt_OI['Genes'][transcript]
@@ -204,6 +216,14 @@ def get_pt_exons(pt_check, exon_info):
             
             # Retrieving the breakpoint position
             bp_position = gene_OI['Position']
+            # Performing a liftover if the genome is hg19
+            if genome == 'hg19':
+                chromosome = gene_OI['Chromosome']
+                hg38info = converter.query(chromosome,bp_position)
+                if hg38info[0][3:] == chromosome:
+                     bp_position = hg38info[1]
+                else:
+                    raise ValueError('Fusion liftover did not work.')
             
             pt_check[pt]['Genes'][transcript]['hg38 Breakpoint Position'] = bp_position
 
@@ -703,7 +723,6 @@ def perform_fusion_analysis(fusion_db,cancertype,conv_df,dataset,ref_data,fusion
     # Generating the background distributions of soft clusters for the reference data
     print('Generating reference network')
     G = nx.from_pandas_adjacency(adj_df)
-    seeds = nAU.create_iteration_seeds(k = 100, seed = 882) #Will change these later for user decisions
     G = nAU.simplify_network(G)
     # Getting the basic inputs of the fusions
     fusion_data = retrieve_cancer_fusion_data(fusion_db,cancertype)
