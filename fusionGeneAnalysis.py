@@ -46,84 +46,29 @@ def extract_fusion_ensembl(cancer_fusion_data, gene_ID_conversion):
         - cancer_fusion_data: pandas DataFrame
             - Dataframe containing the fusion gene names as retrieved from ChimerDB 
         - gene_ID_conversion: pandas DataFrame
-            - Dataframe containing the gene name, synonym and Ensembl IDs to allow for quick conversion. Ideally also contains versions of the IDs to allow for accurate conversions due to gene names/synonyms referring to different genes
+            - Dataframe containing the gene name, synonym and Ensembl IDs
 
     Returns:
     --------
-        - fusion_gene_ensembl: list
-            - list of ensembl IDs to be queried for further analysis
         -ensembl_dict: dict
             - dict containing the conversion between the gene name in ChimerDB and its Ensembl ID
     '''
     
-    # Combining the genes of interest to get IDs for
-    fusion_genes_OI = cancer_fusion_data['H_gene'].tolist() + cancer_fusion_data['T_gene'].tolist()
-    fusion_genes_OI = list(set(fusion_genes_OI))
+    # Combining the genes of interest
+    fusion_genes_OI = set(cancer_fusion_data.H_gene).union(cancer_fusion_data.T_gene)
     
-    # Initializing variables
-    fusion_gene_ensembl = []
-    ensembl_dict = {}
-    ensembl_version = {}
-    ensembl_primary = {}
+    conv_OI = gene_ID_conversion[gene_ID_conversion['Gene name'].isin(fusion_genes_OI)].filter(['Gene stable ID','Gene name']).drop_duplicates()
+    temp_conv = dict(zip(conv_OI['Gene name'],conv_OI['Gene stable ID']))
 
-    # Getting the conversions of interest
-    for _, row in gene_ID_conversion.iterrows():
-        g = row['Gene name']
-        syn = row['Gene Synonym']
-        version = row['Version (gene)']
-        if g in fusion_genes_OI:
-            
-            # Due to some genes having multiple Ensembl IDs need to check if the conversion exists already and if so if it is the most recent version (as a shortcut). This shouldn't create new issues
-            if g not in ensembl_dict:
-                ensembl_dict[g] = row['Gene stable ID']
-                ensembl_version[g] = version
-                ensembl_primary[g] = 1 # Designating this as the primary name of the gene
-            else:
-                if (version > ensembl_version[g]) and ensembl_primary[g]:
-                    ensembl_dict[g] = row['Gene stable ID']
-                    ensembl_version[g] = version
-                elif not ensembl_primary[g]: # For instances when a gene synonym matches the actual name of another gene (i.e. GARS1 has a synonym of SMAD1 which is not what is typically known as SMAD1)
-                    ensembl_dict[g] = row['Gene stable ID']
-                    ensembl_version[g] = version
-                    ensembl_primary[g] = 1
-            
+    # Now let's find how many did not get converted
+    missing_genes = fusion_genes_OI.difference(temp_conv.keys())
+    missing_genes = [x.upper() for x in missing_genes if isinstance(x,str)]
+    alt_conv = gene_ID_conversion[gene_ID_conversion['Gene Synonym'].isin(missing_genes)].filter(['Gene stable ID','Gene name', 'Gene Synonym']).drop_duplicates()
+    mis_temp = dict(zip(alt_conv['Gene Synonym'],alt_conv['Gene stable ID']))
+    #unmappable = set(missing_genes).difference(mis_temp.keys())
+    ensembl_id_conv = {**temp_conv, **mis_temp}
 
-            # Need to double-check if the gene synonym is also in as some patients will have the synonym instaed of the primary gene name
-            if syn in fusion_genes_OI:
-                if syn not in ensembl_dict:
-                    ensembl_dict[syn] = row['Gene stable ID']
-                    ensembl_version[syn] = version
-                    ensembl_primary[syn] = 0 #Designating this as the synonym being found so that if a synonym matches an actual gene name it gets overwritten.
-                else:
-                    if (version > ensembl_version[syn]) and not ensembl_primary[syn]: # Since synonym will have the same verison
-                        ensembl_dict[syn] = row['Gene stable ID']
-                        ensembl_version[syn] = version
-
-        elif syn in fusion_genes_OI:
-            if syn in fusion_genes_OI:
-                if syn not in ensembl_dict:
-                    ensembl_dict[syn] = row['Gene stable ID']
-                    ensembl_version[syn] = version
-                    ensembl_primary[syn] = 0
-                elif not ensembl_primary[syn]: # Do not touch the gene if it was an original gene name
-                    if version > ensembl_version[syn]: # Since synonym will have the same verison
-                        ensembl_dict[syn] = row['Gene stable ID']
-                        ensembl_version[syn] = version
-
-        # Final check if a strange issue where capitalizing all the letters matches the genes of interest    
-        elif g.upper() in fusion_genes_OI:
-            if g.upper not in ensembl_dict:
-                ensembl_dict[g.upper()] = row['Gene stable ID']
-                ensembl_version[g.upper()] = version
-                ensembl_primary[g.upper()] = 1
-            else:
-                if version > ensembl_version[g.upper()]:
-                    ensembl_dict[g.upper()] = row['Gene stable ID']
-                    ensembl_version[g.upper()] = version
-            
-    fusion_gene_ensembl = list(set([v for v in ensembl_dict.values()]))
-
-    return fusion_gene_ensembl, ensembl_dict
+    return ensembl_id_conv
 
 def get_pt_fusion(cancer_fusion_data, ensembl_dict):
     '''
@@ -143,6 +88,7 @@ def get_pt_fusion(cancer_fusion_data, ensembl_dict):
     '''
     
     pt_check = {}
+    removed_count = 0
     for idx, row in cancer_fusion_data.iterrows():
         five_gene = {'Gene':row['H_gene'],
                     'Chromosome':row['H_chr'][3:],
@@ -172,8 +118,10 @@ def get_pt_fusion(cancer_fusion_data, ensembl_dict):
                     'Pt ID':row['BarcodeID']}
             pt_check[idx] = pos_check
         else:
-            print('Patient %s has been removed from further analysis due to missing gene information.'%idx)
+            removed_count += 1
+            #print('Patient %s has been removed from further analysis due to missing gene information.'%idx)
 
+    print(f'There were {removed_count} fusion(s) dropped from further analysis due to missing gene information')
     return pt_check
 
 def get_pt_exons(pt_check, exon_info):
@@ -222,10 +170,12 @@ def get_pt_exons(pt_check, exon_info):
             # Performing a liftover if the genome is hg19
             if genome == 'hg19':
                 chromosome = gene_OI['Chromosome']
-                hg38info = converter.query(chromosome,bp_position)
+                hg38info = converter.query(chromosome,bp_position)[0]
                 if hg38info[0][3:] == chromosome:
                      bp_position = hg38info[1]
                 else:
+                    print(gene_OI)
+                    print(hg38info)
                     raise ValueError('Fusion liftover did not work.')
             
             pt_check[pt]['Genes'][transcript]['hg38 Breakpoint Position'] = bp_position
@@ -374,8 +324,8 @@ def add_pt_domain_arch(pt_dict, fusion_genes_df, ensembl_2_uniprot):
             
             # Ensuring the gene has a UniProt ID associated with it
             if gene in ensembl_2_uniprot:
-                if len(ensembl_2_uniprot[gene]) == 1: 
-                    prot_info = fusion_genes_df[fusion_genes_df['UniProt ID'] == ensembl_2_uniprot[gene][0]]
+                #if len(ensembl_2_uniprot[gene]) == 1: 
+                    prot_info = fusion_genes_df[fusion_genes_df['UniProt ID'] == ensembl_2_uniprot[gene]]
                     prot_fusion_contrib = []
                     prot_fusion_contrib_ids = []
                     
@@ -414,9 +364,9 @@ def add_pt_domain_arch(pt_dict, fusion_genes_df, ensembl_2_uniprot):
                                     prot_fusion_contrib_ids.append(dom_info[1])
                     pt_OI['Genes'][gene]['Fusion Protein Contribution'] = '|'.join(prot_fusion_contrib)
                     pt_OI['Genes'][gene]['Fusion Protein Contribution IDs'] = '|'.join(prot_fusion_contrib_ids)
-                else:
-                    print('Gene %s has multiple UniProt ID due to alternative splicing and thus patient %s will be exlcuded from further analysis.'%(gene, pt))
-                    pts_2_remove.append(pt) 
+                #else:
+                #    print('Gene %s has multiple UniProt ID due to alternative splicing and thus patient %s will be exlcuded from further analysis.'%(gene, pt))
+                #    pts_2_remove.append(pt) 
             else:
                 print('Gene %s was not mapped to a UniProt ID and thus patient %s will be exlcuded from further analysis.'%(gene, pt))
                 pts_2_remove.append(pt)
@@ -484,10 +434,6 @@ def calc_fusion_network_changes(pt_check,adj_df, removed_ngrams,orig_network_val
             - list of n-grams that were subsumed by others within the adjacency matrix
         - orig_network_vals: list
             - list containing the reference network values of the number of connected components, isolates, and articulation points (in order)
-        - k: int (Optional)
-            - number of iterations to be performed for the community detection
-        - seed: int (Optional)
-            - random number generator seed
 
     Returns:
     --------
@@ -502,7 +448,7 @@ def calc_fusion_network_changes(pt_check,adj_df, removed_ngrams,orig_network_val
     artic_orig = orig_network_vals[2]
     
 
-    gross_changes = pd.DataFrame(columns = ['Connected Components','Isolates','Articulation Points','New N-gram Count','Reintroduced N-grams', 'New Nodes','New Edges'],index=pt_check.keys())
+    gross_changes = pd.DataFrame(columns = ['Connected Components','Articulation Points','New N-gram Count','Reintroduced N-grams', 'New Nodes','New Edges'],index=pt_check.keys())
     skip_cnt = 0 # Keeping count of how many are skipped for the entire dataset
     for pt in tqdm(pt_check):
         pt_adj = adj_df.copy()
@@ -592,7 +538,7 @@ def calc_fusion_network_changes(pt_check,adj_df, removed_ngrams,orig_network_val
                 artic_pt = len(list(nx.articulation_points(G_pt)))
             
                 gross_changes.loc[pt,'Connected Components'] = cc_orig - cc_pt
-                gross_changes.loc[pt,'Isolates'] = isol_orig - isol_pt
+                #gross_changes.loc[pt,'Isolates'] = isol_orig - isol_pt
                 gross_changes.loc[pt,'Articulation Points'] = artic_orig - artic_pt
                 pt_check[pt]['New N-grams Added'] = new_ngrams
 
@@ -732,30 +678,31 @@ def perform_fusion_analysis(fusion_db,cancertype,conv_df,dataset,ref_data,fusion
 
 
     print('Retrieving Ensembl IDs of interest')
-    fusion_ensembl, ensembl_dict = extract_fusion_ensembl(fusion_data,conv_df)
+    ensembl_dict = extract_fusion_ensembl(fusion_data,conv_df)
 
     # Getting the basic exon information
     print('Adding exon and peptide information')
-    exon_info = retrieve_ensembl_exon_data(dataset, fusion_ensembl)
+    exon_info = retrieve_ensembl_exon_data(filename='Gene_exon_information.csv')
     exon_info = exon_info.groupby('Gene stable ID')
     pt_check = get_pt_fusion(fusion_data, ensembl_dict)
     pt_exon_check = get_pt_exons(pt_check,exon_info)
     pt_check = add_pt_peptide_info(pt_check, pt_exon_check, exon_info)
     
     # Get UniProt IDs
-    uni_ensembl_conv = {}
-    uniprots_OI = set()
-    for _, row in conv_df.iterrows():
-        g = row['Gene stable ID']
-        uni_id = row['UniProtKB/Swiss-Prot ID']
-        if g in fusion_ensembl:
-            uniprots_OI.add(uni_id)
-            if str(uni_id) != 'nan':
-                uni_ensembl_conv.setdefault(g, set()).add(uni_id)
+    uniprot_temp = conv_df.filter(['Gene stable ID', 'UniProtKB/Swiss-Prot ID']).drop_duplicates().dropna(axis=0, subset=['UniProtKB/Swiss-Prot ID'])
+    uniprot_ensembl_conv = dict(zip(uniprot_temp['Gene stable ID'], uniprot_temp['UniProtKB/Swiss-Prot ID']))
+    #uniprots_OI = set()
+    #for _, row in conv_df.iterrows():
+    #    g = row['Gene stable ID']
+   #     uni_id = row['UniProtKB/Swiss-Prot ID']
+  #      if g in [v for v in ensembl_dict.values()]:
+ #           uniprots_OI.add(uni_id)
+#            if str(uni_id) != 'nan':
+#                uni_ensembl_conv.setdefault(g, set()).add(uni_id)
    
-    uni_ensembl_conv = {k:list(v) for k,v in uni_ensembl_conv.items()}
+    #uni_ensembl_conv = {k:list(v) for k,v in uni_ensembl_conv.items()}
 
-    uniprots_OI = [x for x in uniprots_OI if str(x) != 'nan']
+    uniprots_OI = [x for x in uniprot_ensembl_conv.values() if str(x) != 'nan']
     fusion_genes_df = ref_df.copy()
     fusion_genes_df = fusion_genes_df[fusion_genes_df['UniProt ID'].isin(uniprots_OI)]
     fusion_genes_df = fusion_genes_df.drop_duplicates(ignore_index=True)
@@ -764,7 +711,7 @@ def perform_fusion_analysis(fusion_db,cancertype,conv_df,dataset,ref_data,fusion
         for pt in pt_removal:
             print('Removing pt %s from downstream analysis'%pt)
             del pt_check[pt]
-    pt_check = add_pt_domain_arch(pt_check,fusion_genes_df, uni_ensembl_conv)
+    pt_check = add_pt_domain_arch(pt_check,fusion_genes_df, uniprot_ensembl_conv)
     pt_check = add_pt_ngrams(pt_check,interpro_dict)
 
     # Here determining how many unique architectures there are and thus how many times new networks have to be created
@@ -787,8 +734,8 @@ def perform_fusion_analysis(fusion_db,cancertype,conv_df,dataset,ref_data,fusion
     print('Reduced the network change calculation to %s unique architectures from %s.'%(len(rep_pt_check), len(pt_check)))
     
     print('Determining changes in the fusion network')
-    gross_changes, pt_comm = calc_fusion_network_changes(rep_pt_check,adj_df,removed_ngrams,proteome_gross_topo)
+    gross_changes = calc_fusion_network_changes(rep_pt_check,adj_df,removed_ngrams,proteome_gross_topo)
     fusion_categories_ammended = summarize_fusion_gross_changes(pt_check, uni_archs, cancertype, gross_changes, fusion_categories)
     
-    return fusion_categories_ammended, pt_check, pt_comm
+    return fusion_categories_ammended, pt_check
 
