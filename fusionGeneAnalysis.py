@@ -8,6 +8,7 @@ import math
 from tqdm import tqdm
 import liftover
 import os
+import dansy
 
 CHROMOSOMES = [str(x) for x in np.arange(1,23)] + ['X','Y','MT']
 
@@ -30,7 +31,7 @@ def retrieve_cancer_fusion_data(fusion_db,cancertype):
     '''
     cancer_fusion_data = fusion_db.copy()
     cancer_fusion_data = cancer_fusion_data[cancer_fusion_data['Highly_Reliable_Seq'] == 'Seq+']
-    cancer_fusion_data = cancer_fusion_data[cancer_fusion_data['Frame'] != 'Out-of-Frame']
+    cancer_fusion_data = cancer_fusion_data[~cancer_fusion_data['Frame'].isin(['Out-of-Frame','Out-of-frame'])]
     #cancer_fusion_data = cancer_fusion_data[cancer_fusion_data['Genome_Build_Version'] == 'hg38']
     cancer_fusion_data = cancer_fusion_data[cancer_fusion_data['Cancertype'].isin(cancertype)]
     cancer_fusion_data.drop_duplicates(inplace=True)
@@ -281,16 +282,20 @@ def add_pt_peptide_info(pt_check, pt_exon_check,exon_info):
                 aa_pos = math.ceil(cds_end[-1]/3 - aa_len - 1)
             else:
                 aa_pos = 0
-                print('Due to a likely alternative splicing product of gene %s patient %s will be excluded.'%(gene, pt))
+                if pt in [200, 479, 601, 602, 604]:
+                    print('Due to a likely alternative splicing product of gene %s patient %s will be excluded.'%(gene, pt))
                 pts_2_remove.append(pt)
                 
             
             valid_pts[pt]['Genes'][gene]['Fusion peptide length'] = aa_len
             valid_pts[pt]['Genes'][gene]['Fusion peptide aa position'] = aa_pos
 
+    print(f'There were {len(pts_2_remove)} fusions removed due to \"splicing\".')
     for pt in pts_2_remove:
         del valid_pts[pt]
     
+    print(f'DEBUG check: An example of a fusion that was removed was {pts_2_remove[0:5]}')
+
     return valid_pts
 
 def add_pt_domain_arch(pt_dict, fusion_genes_df, ensembl_2_uniprot):
@@ -314,6 +319,7 @@ def add_pt_domain_arch(pt_dict, fusion_genes_df, ensembl_2_uniprot):
     # Going through each of the fusion proteins that were annotated and finding what the theoretical domain architecture is
     pts_2_remove = []
     pt_check = pt_dict.copy()
+    missing_domain = 0
     for pt in pt_check:
         pt_OI = pt_check[pt]
         fusion_arch = []
@@ -332,7 +338,8 @@ def add_pt_domain_arch(pt_dict, fusion_genes_df, ensembl_2_uniprot):
                     # Checking that the protein was fetched during reference file generation and then flagging the patient to be removed.
                     if prot_info.empty:
                         domains = []
-                        print('Due to missing domain annotations for %s patient %s will be excluded from further analysis.'%(gene, pt))
+                        #print('Due to missing domain annotations for %s patient %s will be excluded from further analysis.'%(gene, pt))
+                        missing_domain += 1
                         pts_2_remove.append(pt)
                     else:
                         pt_check[pt]['Genes'][gene]['UniProt ID'] = prot_info['UniProt ID'].tolist()[0]
@@ -368,7 +375,7 @@ def add_pt_domain_arch(pt_dict, fusion_genes_df, ensembl_2_uniprot):
                 #    print('Gene %s has multiple UniProt ID due to alternative splicing and thus patient %s will be exlcuded from further analysis.'%(gene, pt))
                 #    pts_2_remove.append(pt) 
             else:
-                print('Gene %s was not mapped to a UniProt ID and thus patient %s will be exlcuded from further analysis.'%(gene, pt))
+                #print('Gene %s was not mapped to a UniProt ID and thus patient %s will be exlcuded from further analysis.'%(gene, pt))
                 pts_2_remove.append(pt)
 
         pt_check[pt]['Interpro Domains'] = ';'.join(arch_info)
@@ -378,6 +385,8 @@ def add_pt_domain_arch(pt_dict, fusion_genes_df, ensembl_2_uniprot):
     for pt in set(pts_2_remove):
         del pt_check[pt]
 
+    print(f'Due to missing uniprot information {len(pts_2_remove)} fusion(s) were removed')
+    print(f'There were {missing_domain} fusions that were removed due to domain annotations.')
     return pt_check
 
 def add_pt_ngrams(pt_check,interpro_dict):
@@ -559,7 +568,7 @@ def summarize_fusion_gross_changes(pt_check, uni_archs, cancertype, gross_change
     fusion_categories = old_summary.copy()
 
     # Creating the initial categories for each
-    cats = ['No Change','Interconnectedness','Connect Components','Empty Domain']
+    cats = ['No Change','Interconnectedness','Connect Components','Empty Domain', 'Reintroduction']
     
     for c in cancertype:
         fusion_categories[c] = {k:{'Pt Count':0, 'Pt Members':[], 'Unique Architectures':set()} for k in cats}
@@ -572,14 +581,12 @@ def summarize_fusion_gross_changes(pt_check, uni_archs, cancertype, gross_change
                 cat = 'Empty Domain'
             else:
                 cat = 'No Change'
-        elif row['Connected Components'] == 0 and row['Articulation Points'] <= 0:
+        elif row['Connected Components'] == 0:
             cat = 'Interconnectedness'
-        elif row['Connected Components'] > 0 and row['Articulation Points'] < 0:
+        elif row['Connected Components'] > 0:
             cat = 'Connect Components'
-        elif row['Connected Components'] == 0 and row['Articulation Points'] > 0:
-            cat = 'Interconnectedness'
-        elif row['Connected Components'] > 0 and row['Articulation Points'] == 0:
-            cat = 'Connect Components'
+        elif row['Connected Components'] == -1:
+            cat = 'Reintroduction'
         else:
             print('pt %s has wrecked havoc on the network likely due to using a domain name and not the Interpro ID'%idx)
         
@@ -634,7 +641,7 @@ def retrieve_ensembl_exon_data(filename, dataset:Dataset = None):
 
     return exon_information
 
-def perform_fusion_analysis(fusion_db,cancertype,conv_df,dataset,ref_data,fusion_categories = {}):
+def perform_fusion_analysis(fusion_db,cancertype,conv_df,ref_data,fusion_categories = {}, version = 1, dansy_obj = None):
     '''
     The main function that goes through each step of the fusion analysis for patients of a specific cancer type. Note for multiple cancer types it is recommended to limit only to 3 due to the ensembl querying during the analysis.
 
@@ -734,8 +741,152 @@ def perform_fusion_analysis(fusion_db,cancertype,conv_df,dataset,ref_data,fusion
     print('Reduced the network change calculation to %s unique architectures from %s.'%(len(rep_pt_check), len(pt_check)))
     
     print('Determining changes in the fusion network')
-    gross_changes = calc_fusion_network_changes(rep_pt_check,adj_df,removed_ngrams,proteome_gross_topo)
+    if version == 1:
+        gross_changes = calc_fusion_network_changes(rep_pt_check,adj_df,removed_ngrams,proteome_gross_topo)
+    elif version == 2 and dansy_obj is not None:
+        gross_changes = calc_fusion_network_changes_v2(rep_pt_check, dansy_obj)
     fusion_categories_ammended = summarize_fusion_gross_changes(pt_check, uni_archs, cancertype, gross_changes, fusion_categories)
     
-    return fusion_categories_ammended, pt_check
+    return fusion_categories_ammended, pt_check, gross_changes
 
+def calc_fusion_network_changes_v2(pt_check,proteome_dansy:dansy.dansy):
+    '''
+    Determines and calculates simple descriptors of network changes within caused by the presence of n-grams associated with fusion proteins. 
+    
+    There are two categories of network changes that are determined: gross topology changes and localized soft clustering changes. If the patient's fusion protein domain architecture already exists within the proteome it will not be assessed.
+    
+    Parameters:
+    -----------
+        - pt_check: dict
+            - dictionary containing all patient information
+        - adj_df: pandas DataFrame
+            - dataframe that makes up the adjacency matrix of the complete (or at least reference) proteome of interst
+        - removed_ngrams: list
+            - list of n-grams that were subsumed by others within the adjacency matrix
+        - orig_network_vals: list
+            - list containing the reference network values of the number of connected components, isolates, and articulation points (in order)
+
+    Returns:
+    --------
+        - gross_changes: pandas DataFrame
+            - dataframe containing the gross topological changes associated with the fusion proteins including the new nodes and edges. Negative numbers correspond to a gain for the non-node/edge measurements
+        - comm_info: dict
+            - dictionary containing the information for each patient of communities detected across all iterations. (Note this will change and is very memory intensive)
+        printed statement of how many domain architectures were skipped.
+    '''
+
+    # from the dansy object getting the adjacency matrix and some key gross topology information
+
+    removed_ngrams = proteome_dansy.collapsed_ngrams
+    existing_ngrams = proteome_dansy.ngrams
+    #isol_orig = orig_network_vals[1]
+    #artic_orig = orig_network_vals[2]
+
+    max_change = 0  # Debugging purposes  
+    min_change = 0 # Debugging purposes
+    gross_changes = pd.DataFrame(columns = ['Connected Components','New N-gram Count','Reintroduced N-grams', 'New Nodes','New Edges'],index=pt_check.keys())
+    skip_cnt = 0 # Keeping count of how many are skipped for the entire dataset
+
+    for pt in tqdm(pt_check):
+
+        # Prior to doing any checks on the n-gram will check if the domain architecture already exists. If so then no need to run through the entire analysis
+        pt_arch = pt_check[pt]['Interpro Domain Architecture IDs']
+        
+        if pt_arch in existing_ngrams:
+            gross_changes.loc[pt,:] = 0
+            skip_cnt += 1
+        
+        else:
+            
+            # Checking if any of the n-grams have been removed previously
+            fusion_ngrams = pt_check[pt]['N-grams']
+            ngram_to_return = list(set(fusion_ngrams).intersection(removed_ngrams))
+            new_ngrams = set(fusion_ngrams).difference(existing_ngrams).difference(ngram_to_return)
+            ngrams_to_remove = []
+            
+            # Checking for any n-grams that can be subsumed by a longer n-gram and then removing it
+            for gram in ngram_to_return:
+                for inner_gram in ngram_to_return:
+                    if gram != inner_gram and gram in inner_gram:
+                        ngrams_to_remove.append(gram)
+                  
+            if ngrams_to_remove:
+                ngrams_to_remove = set(ngrams_to_remove)
+                ngram_to_return = list(set(ngram_to_return).difference(ngrams_to_remove))
+                #ngram_to_return = [x for x in ngram_to_return if x not in ngrams_to_remove]
+            
+            # Saving the easy gross topological changes 
+            gross_changes.loc[pt,'Reintroduced N-grams'] = len(ngram_to_return)
+            gross_changes.loc[pt,'New N-gram Count'] = len(new_ngrams)
+            
+            # Checking if any of the new n-grams can be subsumed by a longer new n-gram that was also added
+            ngrams_to_remove = []
+            for gram in new_ngrams:
+                for inner_gram in new_ngrams:
+                    if gram != inner_gram and gram in inner_gram:
+                        ngrams_to_remove.append(gram)
+
+            if ngrams_to_remove:
+                ngrams_to_remove = set(ngrams_to_remove)
+                new_ngrams = set([x for x in new_ngrams if x not in ngrams_to_remove])
+
+            # Due to ease adding in the reintroduced n-grams but keeping track of the actual new ones
+            new_ngrams_orig = new_ngrams.copy()
+            new_ngrams = new_ngrams.union(ngram_to_return)
+            new_edge = 0
+            
+            if new_ngrams:
+                
+                # N-grams to check focusing only on the connected components that the novel n-grams are within
+                original_ngram_check = set()
+                cc_impacted =0
+                for i in nx.connected_components(proteome_dansy.G):
+                    if len(set(fusion_ngrams).intersection(i)) > 0:
+                        original_ngram_check.update(i)
+                        cc_impacted += 1
+
+                
+                # Adding in all the new n-grams with default values of zero
+                #new_df = pd.DataFrame(columns=list(new_ngrams), index=list(new_ngrams)).fillna(0)
+                #pt_adj = pd.concat([pt_adj, new_df]).fillna(0)
+                
+                # Going through and adding connections in the adjacency matrix
+                #for n in new_ngrams:
+                #    new_connection_check = []
+                #    for j in original_ngram_check:
+                #        if n in j and n != j:
+                #            new_connection_check.append(j in new_ngrams_orig)
+                #            new_edge += 1
+                #        elif j in n and n!= j:
+                #            new_connection_check.append(j in new_ngrams_orig)
+                #            new_edge += 1
+                    
+                    # Check if there was a completely subsumed n-gram that slipped through (Note: need to add what happens if this actually happens)
+                 #   if all(new_connection_check):
+                 #       print('There is an issue with the adjacency matrix for pt %s'%pt)
+                  #      print('A subsumed n-gram made it through %s'%n)
+                        #chk = pt_adj.loc[n] > 0
+                        
+                        #print(pt_adj.filter(pt_adj.index[chk]).columns.tolist())
+                gross_changes.loc[pt,'Connected Components'] = cc_impacted - 1
+                max_change = max(max_change,cc_impacted-1)
+                min_change = min(min_change, cc_impacted-1)
+                                    #gross_changes.loc[pt,'Isolates'] = isol_orig - isol_pt
+                                    #gross_changes.loc[pt,'Articulation Points'] = artic_orig - artic_pt
+                pt_check[pt]['New N-grams Added'] = new_ngrams
+                
+            else:
+                
+                gross_changes.loc[pt,'Connected Components'] = 0
+                #gross_changes.loc[pt,'Isolates'] = 0
+                #gross_changes.loc[pt,'Articulation Points'] = 0
+        
+            # Outputting the changes
+                gross_changes.loc[pt,'New Nodes'] = len(new_ngrams)
+                gross_changes.loc[pt,'New Edges'] = new_edge
+                
+    print('There were %s architecture(s) skipped due to presence in the original adjacency matrix.'%skip_cnt)
+    print(f"The maximum change in connected components was {max_change}")
+    print(f"The minimum change in connected components was {min_change}")
+
+    return gross_changes
