@@ -5,23 +5,27 @@ from pybiomart import Dataset, Server
 import os
 
 # Change these according to current build of each reference file as desired.
-file_suffix = 'Reference_File_MMDD_YYYY.csv' # Change this to the current date
-gencode = pd.read_table('gencode.v47.metadata.SwissProt',header=None) # Ensure this is the gencode version file that has been downloaded
-
-# Change these if you want slightly different behavior
-single_file = True # Change if you want to spread the proteome reference files across multiple files
-method = 'gencode' # We recommend gencode due to stability in cross references but can also use pybiomart
-
-# If pybiomart is to used these are the commands that will retrieve UniProt IDs
-servers = Server(host='http://www.ensembl.org')
-mart = servers['ENSEMBL_MART_ENSEMBL'] 
-dataset = Dataset(host = 'http://useast.ensembl.org', name='hsapiens_gene_ensembl')
-gene_cnv = dataset.query(attributes=['ensembl_gene_id', 'external_gene_name','uniprotswissprot'])
-gene_cnv.dropna(axis=0, inplace=True,subset=['UniProtKB/Swiss-Prot ID'])
-
+file_suffix = 'Reference_File_2026_0108.csv' # Change this to the current date
+ensembl_file = 'ENSEMBL_Gene_Conversion.csv'
+gencode = pd.read_table('gencode.v49.metadata.SwissProt',header=None) # Ensure this is the gencode version file that has been downloaded
+full_human_uniprot_file = 'uniprot_id_gene_names.tsv'
 
 # Current Interpro File Data Folder
 data_folder = 'data/Current_Human_Proteome/'
+
+# Change these if you want slightly different behavior
+single_file = True # Change if you want to spread the proteome reference files across multiple files
+#method = 'gencode' # We recommend gencode due to stability in cross references but can also use pybiomart
+
+# If pybiomart is to used these are the commands that will retrieve UniProt IDs
+if os.path.exists(ensembl_file):
+    gene_cnv = pd.read_csv(ensembl_file)
+else:
+    servers = Server(host='http://www.ensembl.org')
+    mart = servers['ENSEMBL_MART_ENSEMBL'] 
+    dataset = Dataset(host = 'http://useast.ensembl.org', name='hsapiens_gene_ensembl')
+    gene_cnv = dataset.query(attributes=['ensembl_gene_id', 'external_gene_name','uniprotswissprot'])
+gene_cnv.dropna(axis=0, inplace=True,subset=['UniProtKB/Swiss-Prot ID'])
 
 # Ensuring if there are existing reference files that they are not overwritten and finding which IDs have not been fetched.
 current_uniprots = set()
@@ -32,15 +36,13 @@ for file in full_dir:
         temp_uniprot = temp_df['UniProt ID'].tolist()
         current_uniprots.update(temp_uniprot)
 
-# There are two potential ways to retrieve the UniProt IDs one is using the pybiomart package and the other is using data downloaded from GenCode
-if method == 'pybiomart':
-    uniprot_ids = gene_cnv['UniProtKB/Swiss-Prot ID'].tolist()
-elif method == 'gencode':
-    uniprot_ids = gencode[1].tolist()
-else:
-    raise ValueError()
+uniprot_ids = set(gene_cnv['UniProtKB/Swiss-Prot ID'].unique()).union(gencode[1].unique())
 
-uniprot_ids = list(set(uniprot_ids).difference(current_uniprots))
+if os.path.exists(full_human_uniprot_file):
+    full_ids = pd.read_csv(full_human_uniprot_file, sep='\t')
+    uniprot_ids.update(full_ids['Entry'].unique())
+
+uniprot_ids = list(uniprot_ids.difference(current_uniprots))
 print('Out of %s there are a total of %s left'%(len(set(uniprot_ids))+len(current_uniprots), len(set(uniprot_ids))))
 
 # Double-check in case there was a disruption during reference file generation.
