@@ -71,7 +71,66 @@ def extract_fusion_ensembl(cancer_fusion_data, gene_ID_conversion):
 
     return ensembl_id_conv
 
-def get_pt_fusion(cancer_fusion_data, ensembl_dict):
+def verify_fusion_gene(fusion_info:dict, ensembl_conversion:dict, complete_gene_info:pd.DataFrame):
+    '''
+    This takes individual genes within the gene fusion and verifies that they can be converted into the correct ensembl ID.
+    '''
+
+    fusion_gene = fusion_info['Gene']
+    chromloc = fusion_info['Chromosome']
+    position = fusion_info['Position']
+
+    # First check if the gene is in the baseline ensembl conversion dictionary
+    check_loc = False
+    upper_flag = False
+    if fusion_gene in ensembl_conversion.keys():
+        check_loc = True
+    else:
+        # Check if it needs to be uppercased for a proper check
+        if fusion_gene.upper() in ensembl_conversion.keys():
+            check_loc = True
+            fusion_gene = fusion_gene.upper()
+            fusion_info['Gene'] = fusion_gene
+            upper_flag = True
+    
+    # Now double check that the fusion gene chromosome is an acceptable chromosome and breakpoint is within the bounds of the gene.
+    verified = False
+    ensembl_output = None
+    if check_loc:
+        ensembl_output = ensembl_conversion[fusion_gene]
+        acceptable_chrom = chromloc in CHROMOSOMES
+        if acceptable_chrom:
+            gene_index = complete_gene_info[complete_gene_info['Gene stable ID'] == ensembl_conversion[fusion_gene]].index
+            gene_information = complete_gene_info.iloc[gene_index[0]]
+            correct_chrom = gene_information['Chromosome/scaffold name'] == chromloc
+            within_bounds = (position >= gene_information['Gene start (bp)']-500) & (position <= gene_information['Gene end (bp)']+500)
+            if correct_chrom and within_bounds:
+                verified = True
+                
+            elif not correct_chrom:
+                # If the chromosome is wrong need to make sure we get the correct gene instead
+                potential_info = complete_gene_info[complete_gene_info['Gene name'] == fusion_gene].filter(['Gene stable ID', 'Gene name','Chromosome/scaffold name', 'Gene start (bp)', 'Gene end (bp)']).drop_duplicates()
+                if len(potential_info) > 1:
+                    overlap = potential_info[potential_info['Chromosome/scaffold name'] == chromloc]
+                    new_ensembl = overlap['Gene stable ID'].values[0]
+                else:
+                    potential_info = complete_gene_info[complete_gene_info['Gene Synonym'] == fusion_gene].filter(['Gene stable ID', 'Gene name','Chromosome/scaffold name', 'Gene start (bp)', 'Gene end (bp)']).drop_duplicates()
+                    if len(potential_info) > 1:
+                        overlap = potential_info[potential_info['Chromosome/scaffold name'] == chromloc]
+                        new_ensembl = overlap['Gene stable ID'].values[0]
+                    else:
+                        new_ensembl = None
+                if new_ensembl is not None:
+                    ensembl_output = new_ensembl
+                    verified = True
+            
+            else:
+                pass
+
+    return verified, upper_flag,ensembl_output
+
+
+def get_pt_fusion(cancer_fusion_data, ensembl_dict, conversion_df):
     '''
     Gets the patient and their fusion information. If one of the fusion partners lacks an Ensembl ID then the patient is removed from the analysis pool.
 
@@ -90,39 +149,90 @@ def get_pt_fusion(cancer_fusion_data, ensembl_dict):
     
     pt_check = {}
     removed_count = 0
-    for idx, row in cancer_fusion_data.iterrows():
-        five_gene = {'Gene':row['H_gene'],
-                    'Chromosome':row['H_chr'][3:],
-                    'Position':row['H_position'],
-                    'Strand':row['H_strand'],
-                    'Fusion pos':5
-                    }
-        three_gene = {'Gene':row['T_gene'],
-                    'Chromosome':row['T_chr'][3:],
-                    'Position':row['T_position'],
-                    'Strand':row['T_strand'],
-                    'Fusion pos':3
-                    }
-        
-        # Gene checks to ensure can be used in downstream analysis
-        can_convert = (five_gene['Gene'] in ensembl_dict.keys()) and (three_gene['Gene'] in ensembl_dict.keys())
-        chrom_acceptable = (five_gene['Chromosome'] in CHROMOSOMES) and (three_gene['Chromosome'] in CHROMOSOMES)
+    changed_convert = 0
+    
+    # Setting up a converter for the human genome
+    converter = liftover.get_lifter('hg19', 'hg38', one_based=True)
 
+    
+
+    for idx, row in cancer_fusion_data.iterrows():
+
+        genome = row['Genome_Build_Version']
+
+        five_gene = {'Gene':row['H_gene'],
+                        'Chromosome':row['H_chr'][3:],
+                        'ChimerDB_Position':row['H_position'],
+                        'Strand':row['H_strand'],
+                        'Fusion pos':5
+                        }
+        three_gene = {'Gene':row['T_gene'],
+                        'Chromosome':row['T_chr'][3:],
+                        'ChimerDB_Position':row['T_position'],
+                        'Strand':row['T_strand'],
+                        'Fusion pos':3
+                        }
+
+        #   Performing a liftover if the genome is hg19
+        if genome == 'hg19':
+            for gene_OI in [five_gene, three_gene]:
+                bp_position = gene_OI['ChimerDB_Position']
+                liftover_issue = False
+                chromosome = gene_OI['Chromosome']
+                hg38info = converter.query(chromosome,bp_position)[0]
+                if hg38info[0][3:] == chromosome:
+                    bp_position = hg38info[1]
+                else:
+                    liftover_issue = True
+                gene_OI['Position'] = bp_position
+                gene_OI['liftover_issue'] = liftover_issue
+        else:
+            for gene_OI in [five_gene, three_gene]:
+                gene_OI['Position'] = gene_OI['ChimerDB_Position']
+                gene_OI['liftover_issue'] = False
+        
+        
+        # Double check the conversion for uppercase instances of the gene name:
+        # Gene checks to ensure can be used in downstream analysis
+        # can_convert = (five_gene['Gene'] in ensembl_dict.keys()) and (three_gene['Gene'] in ensembl_dict.keys())
+        # ck = False
+        # if not can_convert:
+        #     if five_gene['Gene'] not in ensembl_dict.keys():
+        #         if five_gene['Gene'].upper() in ensembl_dict.keys():
+        #             five_gene['Gene'] = five_gene['Gene'].upper()
+        #             ck = True
+        #     if three_gene['Gene'] not in ensembl_dict.keys():
+        #         if three_gene['Gene'].upper() in ensembl_dict.keys():
+        #             three_gene['Gene'] = three_gene['Gene'].upper()
+        #             ck = True
+        #     if ck:
+        #         changed_convert += 1
+        # # Gene checks to ensure can be used in downstream analysis
+        # can_convert = (five_gene['Gene'] in ensembl_dict.keys()) and (three_gene['Gene'] in ensembl_dict.keys())
+
+        # chrom_acceptable = (five_gene['Chromosome'] in CHROMOSOMES) and (three_gene['Chromosome'] in CHROMOSOMES)
+        five_verified,fiveup,five_ensembl = verify_fusion_gene(five_gene,ensembl_dict,conversion_df)
+        three_verified, threeup, three_ensembl = verify_fusion_gene(three_gene,ensembl_dict,conversion_df)
 
         # Making sure the gene is included in the ensembl conversion otherwise removing the pt from analysis
-        if can_convert and chrom_acceptable:
-            pos_check = {'Genes':{ensembl_dict[five_gene['Gene']]:five_gene,
-                    ensembl_dict[three_gene['Gene']]:three_gene},
+        if five_verified and three_verified:
+            pos_check = {'Genes':{five_ensembl:five_gene,
+                    three_ensembl:three_gene},
                     'Fusion Protein':row['Fusion_pair'],
-                    'Genome Build':row['Genome_Build_Version'],
+                    'Genome Build':genome,
                     'Cancer Type':row['Cancertype'],
                     'Pt ID':row['BarcodeID']}
             pt_check[idx] = pos_check
         else:
             removed_count += 1
+            
             #print('Patient %s has been removed from further analysis due to missing gene information.'%idx)
 
+        if fiveup or threeup:
+            changed_convert += 1
+
     print(f'There were {removed_count} fusion(s) dropped from further analysis due to missing gene information')
+    print(f'There were {changed_convert} fusions that the gene name had to be changed to upppercase')
     return pt_check
 
 def get_pt_exons(pt_check, exon_info):
@@ -147,10 +257,6 @@ def get_pt_exons(pt_check, exon_info):
     mismatch_flag = 0
     mismatch_cnt = 0
 
-    # Setting up a converter for the human genome
-    converter = liftover.get_lifter('hg19', 'hg38', one_based=True)
-
-
     for pt in pt_check:
         pt_OI = pt_check[pt]
         pt_exon_check[pt] = {}
@@ -166,20 +272,11 @@ def get_pt_exons(pt_check, exon_info):
             # The CDS start is a convenient way regardless of strand to order the exons
             gene_info = gene_info.sort_values(by = 'CDS start')
             
-            # Retrieving the breakpoint position
-            bp_position = gene_OI['Position']
-            # Performing a liftover if the genome is hg19
-            if genome == 'hg19':
-                chromosome = gene_OI['Chromosome']
-                hg38info = converter.query(chromosome,bp_position)[0]
-                if hg38info[0][3:] == chromosome:
-                     bp_position = hg38info[1]
-                else:
-                    print(gene_OI)
-                    print(hg38info)
-                    raise ValueError('Fusion liftover did not work.')
-            
-            pt_check[pt]['Genes'][transcript]['hg38 Breakpoint Position'] = bp_position
+            liftover_issue = gene_OI['liftover_issue']
+                    
+            if liftover_issue:
+                continue
+            bp_position = pt_check[pt]['Genes'][transcript]['Position']
 
             # Figuring out which exons are after the breakpoint
             gene_info['Exon Inclusion'] = gene_info['Exon region start (bp)'] >= bp_position
@@ -245,17 +342,14 @@ def add_pt_peptide_info(pt_check, pt_exon_check,exon_info):
             gene_info = gene_info.sort_values(by = 'CDS start')
             
             if any(exon_check):
+                exons_kept = exon_check[exon_check]
+                fusion_exons = gene_info.filter(exons_kept.index, axis=0)
+                cds_start = fusion_exons['CDS start'].tolist()
+                cds_end = fusion_exons['CDS end'].tolist()
+                
                 if pt_OI[gene]['Fusion pos'] == 5:
-                    exons_kept = exon_check[exon_check]
-                    fusion_exons = gene_info.filter(exons_kept.index, axis=0)
-                    seq_len = fusion_exons['CDS end'].tolist()[-1]
-                    
+                    seq_len = fusion_exons['CDS end'].tolist()[-1]    
                 else:
-                    
-                    exons_kept = exon_check[exon_check]
-                    fusion_exons = gene_info.filter(exons_kept.index, axis = 0)
-                    cds_start = fusion_exons['CDS start'].tolist()
-                    cds_end = fusion_exons['CDS end'].tolist()
                     seq_len = cds_end[-1] - cds_start[0] +1 - 3# The plus one is to account for length arithmetic while the -3 is for the stop codon
             else:
                 seq_len = 0
@@ -264,7 +358,7 @@ def add_pt_peptide_info(pt_check, pt_exon_check,exon_info):
             if any(exon_check != trunc_check):
                 trunc_event = [exon_check != trunc_check]
                 trunc_exon = gene_info.filter(exon_check.index[trunc_event[0]], axis = 0)
-                trunc_diff = trunc_exon['Exon region end (bp)'].tolist()[0] - pt_OI[gene]['hg38 Breakpoint Position']
+                trunc_diff = trunc_exon['Exon region end (bp)'].tolist()[0] - pt_OI[gene]['Position']
                
             else:
                 trunc_diff = 0
@@ -281,20 +375,18 @@ def add_pt_peptide_info(pt_check, pt_exon_check,exon_info):
             elif seq_len > 0:
                 aa_pos = math.ceil(cds_end[-1]/3 - aa_len - 1)
             else:
-                aa_pos = 0
-                if pt in [200, 479, 601, 602, 604]:
-                    print('Due to a likely alternative splicing product of gene %s patient %s will be excluded.'%(gene, pt))
+                # This represents the cases where the UTRs are spliced together for the 3' end so the amino acid position of the fusion is the CDS end
+                cds_end = gene_info['CDS end'].tolist()
+                aa_pos = max(cds_end)
                 pts_2_remove.append(pt)
                 
             
             valid_pts[pt]['Genes'][gene]['Fusion peptide length'] = aa_len
             valid_pts[pt]['Genes'][gene]['Fusion peptide aa position'] = aa_pos
 
-    print(f'There were {len(pts_2_remove)} fusions removed due to \"splicing\".')
-    for pt in pts_2_remove:
-        del valid_pts[pt]
-    
-    print(f'DEBUG check: An example of a fusion that was removed was {pts_2_remove[0:5]}')
+    print(f'There were {len(pts_2_remove)} fusions with a UTR region as part of the fusion.')
+    #for pt in pts_2_remove:
+    #    del valid_pts[pt]
 
     return valid_pts
 
@@ -691,7 +783,7 @@ def perform_fusion_analysis(fusion_db,cancertype,conv_df,ref_data,fusion_categor
     print('Adding exon and peptide information')
     exon_info = retrieve_ensembl_exon_data(filename='Gene_exon_information.csv')
     exon_info = exon_info.groupby('Gene stable ID')
-    pt_check = get_pt_fusion(fusion_data, ensembl_dict)
+    pt_check = get_pt_fusion(fusion_data, ensembl_dict,conv_df)
     pt_exon_check = get_pt_exons(pt_check,exon_info)
     pt_check = add_pt_peptide_info(pt_check, pt_exon_check, exon_info)
     
@@ -748,7 +840,7 @@ def perform_fusion_analysis(fusion_db,cancertype,conv_df,ref_data,fusion_categor
     fusion_categories_ammended = summarize_fusion_gross_changes(pt_check, uni_archs, cancertype, gross_changes, fusion_categories)
     
     return fusion_categories_ammended, pt_check, gross_changes
-
+    
 def calc_fusion_network_changes_v2(pt_check,proteome_dansy:dansy.dansy):
     '''
     Determines and calculates simple descriptors of network changes within caused by the presence of n-grams associated with fusion proteins. 
@@ -782,8 +874,6 @@ def calc_fusion_network_changes_v2(pt_check,proteome_dansy:dansy.dansy):
     #isol_orig = orig_network_vals[1]
     #artic_orig = orig_network_vals[2]
 
-    max_change = 0  # Debugging purposes  
-    min_change = 0 # Debugging purposes
     gross_changes = pd.DataFrame(columns = ['Connected Components','New N-gram Count','Reintroduced N-grams', 'New Nodes','New Edges'],index=pt_check.keys())
     skip_cnt = 0 # Keeping count of how many are skipped for the entire dataset
 
@@ -869,8 +959,6 @@ def calc_fusion_network_changes_v2(pt_check,proteome_dansy:dansy.dansy):
                         
                         #print(pt_adj.filter(pt_adj.index[chk]).columns.tolist())
                 gross_changes.loc[pt,'Connected Components'] = cc_impacted - 1
-                max_change = max(max_change,cc_impacted-1)
-                min_change = min(min_change, cc_impacted-1)
                                     #gross_changes.loc[pt,'Isolates'] = isol_orig - isol_pt
                                     #gross_changes.loc[pt,'Articulation Points'] = artic_orig - artic_pt
                 pt_check[pt]['New N-grams Added'] = new_ngrams
@@ -886,7 +974,6 @@ def calc_fusion_network_changes_v2(pt_check,proteome_dansy:dansy.dansy):
                 gross_changes.loc[pt,'New Edges'] = new_edge
                 
     print('There were %s architecture(s) skipped due to presence in the original adjacency matrix.'%skip_cnt)
-    print(f"The maximum change in connected components was {max_change}")
-    print(f"The minimum change in connected components was {min_change}")
+
 
     return gross_changes
