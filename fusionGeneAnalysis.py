@@ -897,9 +897,9 @@ def calc_fusion_network_changes_v2(pt_check,proteome_dansy:dansy.dansy):
             # Checking for any n-grams that can be subsumed by a longer n-gram and then removing it
             for gram in ngram_to_return:
                 for inner_gram in ngram_to_return:
-                    if gram != inner_gram and gram in inner_gram:
+                    if gram != inner_gram and gram in inner_gram and len(gram.split('|')) > 1:
                         ngrams_to_remove.append(gram)
-                  
+
             if ngrams_to_remove:
                 ngrams_to_remove = set(ngrams_to_remove)
                 ngram_to_return = list(set(ngram_to_return).difference(ngrams_to_remove))
@@ -928,12 +928,20 @@ def calc_fusion_network_changes_v2(pt_check,proteome_dansy:dansy.dansy):
             if new_ngrams:
                 
                 # N-grams to check focusing only on the connected components that the novel n-grams are within
-                original_ngram_check = set()
-                cc_impacted =0
+                cc_impacted = 0
                 for i in nx.connected_components(proteome_dansy.G):
-                    if len(set(fusion_ngrams).intersection(i)) > 0:
-                        original_ngram_check.update(i)
+                    overlap = set(fusion_ngrams).intersection(i)
+                    if len(overlap) > 0:
+                        
                         cc_impacted += 1
+                    else:
+                        # Check if any of the reintroduced n-grams are part of longer ones in the connected component
+                        found_flag = False
+                        for ngram in ngram_to_return:
+                            if any(ngram in j for j in i):
+                                found_flag = True
+                        if found_flag:
+                            cc_impacted +=1 
 
                 
                 # Adding in all the new n-grams with default values of zero
@@ -961,7 +969,8 @@ def calc_fusion_network_changes_v2(pt_check,proteome_dansy:dansy.dansy):
                 gross_changes.loc[pt,'Connected Components'] = cc_impacted - 1
                                     #gross_changes.loc[pt,'Isolates'] = isol_orig - isol_pt
                                     #gross_changes.loc[pt,'Articulation Points'] = artic_orig - artic_pt
-                pt_check[pt]['New N-grams Added'] = new_ngrams
+                pt_check[pt]['New N-grams Added'] = new_ngrams_orig
+                pt_check[pt]['Reintroduced N-grams'] = ngram_to_return
                 
             else:
                 
