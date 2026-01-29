@@ -277,16 +277,33 @@ def get_pt_exons(pt_check, exon_info):
             if liftover_issue:
                 continue
             bp_position = pt_check[pt]['Genes'][transcript]['Position']
-
+          
             # Figuring out which exons are after the breakpoint
-            gene_info['Exon Inclusion'] = gene_info['Exon region start (bp)'] >= bp_position
+            gene_info['Exon Inclusion'] = gene_info['Exon region start (bp)'] <= bp_position
             gene_info['Exon Truncation'] = gene_info['Exon region end (bp)'] > bp_position
 
+            
+            
+            # Creating a correction flags
+            trunc_correction = any((gene_info['Exon Inclusion'] == gene_info['Exon Truncation']) & gene_info['Exon Inclusion'])
+            if trunc_correction:
+                trunc_check = gene_info[(gene_info['Exon Inclusion'] == gene_info['Exon Truncation']) & gene_info['Exon Inclusion']].index
+                
             # Correcting exon inclusion if it is the 5' gene on the + strand or the 3' gene on the  - strand
-            if (gene_OI['Fusion pos'] == 5 and gene_strand == 1) or (gene_OI['Fusion pos'] == 3 and gene_strand == -1):
+            if (gene_OI['Fusion pos'] == 5 and gene_strand == -1) or (gene_OI['Fusion pos'] == 3 and gene_strand == 1): #
                 gene_info['Exon Inclusion'] = ~gene_info['Exon Inclusion']
                 gene_info['Exon Truncation'] = ~gene_info['Exon Truncation']
             
+            # For specific cases when the tail gene has the breakpoint at the start of an exon that would otherwise be removed with the correction above
+            if all([trunc_correction, gene_OI['Fusion pos'] == 3, gene_strand == 1]):
+                gene_info.loc[trunc_check,'Exon Inclusion'] = True
+                gene_info.loc[trunc_check,'Exon Truncation'] = True
+            
+            if all([trunc_correction, gene_OI['Fusion pos'] == 5, gene_strand == -1]):
+                gene_info.loc[trunc_check,'Exon Inclusion'] = True
+                gene_info.loc[trunc_check,'Exon Truncation'] = True
+
+
             # Excluding the exons that do not correspond to the CDS region
             gene_info['CDS NaN Check'] = np.isnan(gene_info['CDS start'])
             gene_info['CDS Exons'] = np.where(gene_info['CDS NaN Check'],False, gene_info['Exon Inclusion'])
@@ -339,32 +356,47 @@ def add_pt_peptide_info(pt_check, pt_exon_check,exon_info):
             exon_check = cur_pt[gene]['Inclusion']
             trunc_check = cur_pt[gene]['Truncation']
             gene_info = exon_info.get_group(gene).copy()
-            gene_info = gene_info.sort_values(by = 'CDS start')
+            gene_info = gene_info.sort_values(by = 'Genomic coding start')
+            strand = gene_info['Strand'].tolist()[0]
+            rel_pos = pt_OI[gene]['Position']
+            fusion_pos = pt_OI[gene]['Fusion pos']
             
             if any(exon_check):
                 exons_kept = exon_check[exon_check]
                 fusion_exons = gene_info.filter(exons_kept.index, axis=0)
                 cds_start = fusion_exons['CDS start'].tolist()
                 cds_end = fusion_exons['CDS end'].tolist()
-                
-                if pt_OI[gene]['Fusion pos'] == 5:
-                    seq_len = fusion_exons['CDS end'].tolist()[-1]    
-                else:
-                    seq_len = cds_end[-1] - cds_start[0] +1 - 3# The plus one is to account for length arithmetic while the -3 is for the stop codon
+                # if pt_OI[gene]['Fusion pos'] == 5:
+                #     seq_len = fusion_exons['Genomic coding end'].tolist()[-1] - fusion_exons['Genomic coding end'].tolist()[0]
+                # else:
+                seq_len = cds_end[-1] - cds_start[0] +1 #- 3# The plus one is to account for 0-indexing while the -3 is for the stop codon
             else:
                 seq_len = 0
+
+
+            if any((exon_check == trunc_check) & exon_check):
+                trunc_event = [exon_check == trunc_check]
+                trunc_exon = gene_info.filter(exon_check.index[trunc_event[0]], axis = 0)
                 
 
-            if any(exon_check != trunc_check):
-                trunc_event = [exon_check != trunc_check]
-                trunc_exon = gene_info.filter(exon_check.index[trunc_event[0]], axis = 0)
-                trunc_diff = trunc_exon['Exon region end (bp)'].tolist()[0] - pt_OI[gene]['Position']
-               
+                # if trunc_exon['CDS start'].tolist()[0] == 1:
+                #     rel_cds_pos = trunc_exon['Exon region end (bp)'].tolist()[0]
+                # else:
+                    # rel_cds_pos = trunc_exon['Exon region start (bp)'] + trunc_exon['CDS end'] - trunc_exon['CDS start']
+                trunc_diff = 0
+                rel_cds_start = trunc_exon['Genomic coding start'].tolist()[0]
+                rel_cds_end = trunc_exon['Genomic coding end'].tolist()[0]
+                if rel_cds_start < rel_pos and rel_cds_end > rel_pos:
+                    if fusion_pos == 5:
+                        trunc_diff =  rel_cds_end - rel_pos
+                    elif fusion_pos ==3:
+                        trunc_diff =  rel_pos - rel_cds_start
+                        
             else:
                 trunc_diff = 0
-               
+        
             if seq_len > 0:
-                aa_len = (seq_len - trunc_diff)/3
+                aa_len = (seq_len - trunc_diff)/3 - 1
             else:
                 aa_len = 0
 
@@ -667,7 +699,7 @@ def summarize_fusion_gross_changes(pt_check, uni_archs, cancertype, gross_change
     
     print('Simple Gross Network Summary Generation')
     for idx, row in gross_changes.iterrows():
-        pt_arch = pt_check[idx]['Interpro Domain Architecture']
+        pt_arch = pt_check[idx]['Interpro Domain Architecture IDs']
         if sum(row) == 0:
             if pt_check[idx]['Interpro Domains'] == '':
                 cat = 'Empty Domain'
@@ -733,7 +765,7 @@ def retrieve_ensembl_exon_data(filename, dataset:Dataset = None):
 
     return exon_information
 
-def perform_fusion_analysis(fusion_db,cancertype,conv_df,ref_data,fusion_categories = {}, version = 1, dansy_obj = None):
+def perform_fusion_analysis(fusion_db,cancertype,conv_df,ref_data,fusion_categories = {}, version = 1, dansy_obj = None, expanded_flag = False):
     '''
     The main function that goes through each step of the fusion analysis for patients of a specific cancer type. Note for multiple cancer types it is recommended to limit only to 3 due to the ensembl querying during the analysis.
 
@@ -817,7 +849,7 @@ def perform_fusion_analysis(fusion_db,cancertype,conv_df,ref_data,fusion_categor
     uni_archs = {}
 
     for pt in pt_check:
-        pt_arch = pt_check[pt]['Interpro Domain Architecture'] # Will need to eventually change this to the IDs version
+        pt_arch = pt_check[pt]['Interpro Domain Architecture IDs'] # Will need to eventually change this to the IDs version
         if pt_arch in uni_archs:
             uni_archs[pt_arch]['Patients'].append(pt)
             uni_archs[pt_arch]['Count'] += 1
@@ -830,18 +862,23 @@ def perform_fusion_analysis(fusion_db,cancertype,conv_df,ref_data,fusion_categor
     pt_2_drop = [pt for pt in rep_pt_check if pt not in rep_pts]
     for pt in pt_2_drop:
         del rep_pt_check[pt]
+
+    
     print('Reduced the network change calculation to %s unique architectures from %s.'%(len(rep_pt_check), len(pt_check)))
     
     print('Determining changes in the fusion network')
     if version == 1:
         gross_changes = calc_fusion_network_changes(rep_pt_check,adj_df,removed_ngrams,proteome_gross_topo)
     elif version == 2 and dansy_obj is not None:
-        gross_changes = calc_fusion_network_changes_v2(rep_pt_check, dansy_obj)
+        if expanded_flag:
+            gross_changes = calc_fusion_network_changes_v2(rep_pt_check, dansy_obj, uni_archs)
+        else:
+            gross_changes = calc_fusion_network_changes_v2(rep_pt_check, dansy_obj)
     fusion_categories_ammended = summarize_fusion_gross_changes(pt_check, uni_archs, cancertype, gross_changes, fusion_categories)
     
     return fusion_categories_ammended, pt_check, gross_changes
     
-def calc_fusion_network_changes_v2(pt_check,proteome_dansy:dansy.dansy):
+def calc_fusion_network_changes_v2(pt_check,proteome_dansy:dansy.dansy, full_fusion_rep_info:dict = None):
     '''
     Determines and calculates simple descriptors of network changes within caused by the presence of n-grams associated with fusion proteins. 
     
@@ -874,7 +911,18 @@ def calc_fusion_network_changes_v2(pt_check,proteome_dansy:dansy.dansy):
     #isol_orig = orig_network_vals[1]
     #artic_orig = orig_network_vals[2]
 
-    gross_changes = pd.DataFrame(columns = ['Connected Components','New N-gram Count','Reintroduced N-grams', 'New Nodes','New Edges'],index=pt_check.keys())
+    if full_fusion_rep_info is not None:
+        full_pt_list = set()
+        for v in full_fusion_rep_info.values():
+            full_pt_list.update(v['Patients'])
+        
+        # Double checking that the other pts in the pt_check are added in:
+        full_pt_list.update(pt_check.keys())
+        full_pt_list = list(full_pt_list)
+
+    else:
+        full_pt_list = pt_check.keys()
+    gross_changes = pd.DataFrame(columns = ['Connected Components','New N-gram Count','Reintroduced N-grams', 'New Nodes','New Edges'],index=full_pt_list,dtype=int).fillna(0)
     skip_cnt = 0 # Keeping count of how many are skipped for the entire dataset
 
     for pt in tqdm(pt_check):
@@ -883,7 +931,11 @@ def calc_fusion_network_changes_v2(pt_check,proteome_dansy:dansy.dansy):
         pt_arch = pt_check[pt]['Interpro Domain Architecture IDs']
         
         if pt_arch in existing_ngrams:
-            gross_changes.loc[pt,:] = 0
+            if full_fusion_rep_info is not None:
+                for reps in full_fusion_rep_info[pt_arch]['Patients']:
+                    gross_changes.loc[reps,:] = 0
+            else:
+                gross_changes.loc[pt,:] = 0
             skip_cnt += 1
         
         else:
@@ -925,7 +977,7 @@ def calc_fusion_network_changes_v2(pt_check,proteome_dansy:dansy.dansy):
             new_ngrams = new_ngrams.union(ngram_to_return)
             new_edge = 0
             
-            if new_ngrams:
+            if new_ngrams_orig: # If there were any new n-grams going through and checking all the fusion n-grams to determine which connected components were impacted.
                 
                 # N-grams to check focusing only on the connected components that the novel n-grams are within
                 cc_impacted = 0
@@ -943,42 +995,28 @@ def calc_fusion_network_changes_v2(pt_check,proteome_dansy:dansy.dansy):
                         if found_flag:
                             cc_impacted +=1 
 
-                
-                # Adding in all the new n-grams with default values of zero
-                #new_df = pd.DataFrame(columns=list(new_ngrams), index=list(new_ngrams)).fillna(0)
-                #pt_adj = pd.concat([pt_adj, new_df]).fillna(0)
-                
-                # Going through and adding connections in the adjacency matrix
-                #for n in new_ngrams:
-                #    new_connection_check = []
-                #    for j in original_ngram_check:
-                #        if n in j and n != j:
-                #            new_connection_check.append(j in new_ngrams_orig)
-                #            new_edge += 1
-                #        elif j in n and n!= j:
-                #            new_connection_check.append(j in new_ngrams_orig)
-                #            new_edge += 1
-                    
-                    # Check if there was a completely subsumed n-gram that slipped through (Note: need to add what happens if this actually happens)
-                 #   if all(new_connection_check):
-                 #       print('There is an issue with the adjacency matrix for pt %s'%pt)
-                  #      print('A subsumed n-gram made it through %s'%n)
-                        #chk = pt_adj.loc[n] > 0
-                        
-                        #print(pt_adj.filter(pt_adj.index[chk]).columns.tolist())
-                gross_changes.loc[pt,'Connected Components'] = cc_impacted - 1
-                                    #gross_changes.loc[pt,'Isolates'] = isol_orig - isol_pt
-                                    #gross_changes.loc[pt,'Articulation Points'] = artic_orig - artic_pt
-                pt_check[pt]['New N-grams Added'] = new_ngrams_orig
-                pt_check[pt]['Reintroduced N-grams'] = ngram_to_return
-                
+                cc_val = cc_impacted - 1
+            
+            elif ngram_to_return: # As a special case there can be only reintroduced n-grams so to designate that using a value that should not be identified with -1.
+                cc_val = -1
+
             else:
-                
-                gross_changes.loc[pt,'Connected Components'] = 0
+                cc_val = 0
                 #gross_changes.loc[pt,'Isolates'] = 0
                 #gross_changes.loc[pt,'Articulation Points'] = 0
         
+            # Reporting back what are the new and reintroduced n-grams
+            pt_check[pt]['New N-grams Added'] = new_ngrams_orig
+            pt_check[pt]['Reintroduced N-grams'] = ngram_to_return
+
             # Outputting the changes
+            if full_fusion_rep_info is not None:
+                for reps in full_fusion_rep_info[pt_arch]['Patients']:
+                    gross_changes.loc[reps,'Connected Components'] = cc_val
+                    gross_changes.loc[reps,'New Nodes'] = len(new_ngrams_orig)
+                    gross_changes.loc[reps,'New Edges'] = new_edge
+            else:
+                gross_changes.loc[pt,'Connected Components'] = cc_val
                 gross_changes.loc[pt,'New Nodes'] = len(new_ngrams)
                 gross_changes.loc[pt,'New Edges'] = new_edge
                 
