@@ -444,6 +444,7 @@ def add_pt_domain_arch(pt_dict, fusion_genes_df, ensembl_2_uniprot):
     pts_2_remove = []
     pt_check = pt_dict.copy()
     missing_domain = 0
+    aa_buffer = 2
     for pt in pt_check:
         pt_OI = pt_check[pt]
         fusion_arch = []
@@ -476,7 +477,7 @@ def add_pt_domain_arch(pt_dict, fusion_genes_df, ensembl_2_uniprot):
                         for d in domains:
                             dom_info = d.split(':')
                             if fusion_info['Fusion pos'] == 5:
-                                if int(dom_info[3]) <= fusion_info['Fusion peptide aa position']:
+                                if int(dom_info[3]) <= fusion_info['Fusion peptide aa position'] +aa_buffer:
                                     fusion_arch.append(dom_info[1])
                                     legible_arch.append(dom_info[0])
                                     arch_info.append(d)
@@ -485,7 +486,7 @@ def add_pt_domain_arch(pt_dict, fusion_genes_df, ensembl_2_uniprot):
                                     prot_fusion_contrib.append(dom_info[0])
                                     prot_fusion_contrib_ids.append(dom_info[1])
                             else:
-                                if int(dom_info[2]) >= fusion_info['Fusion peptide aa position']:
+                                if int(dom_info[2]) >= fusion_info['Fusion peptide aa position'] - aa_buffer:
                                     fusion_arch.append(dom_info[1])
                                     legible_arch.append(dom_info[0])
                                     arch_info.append(d)
