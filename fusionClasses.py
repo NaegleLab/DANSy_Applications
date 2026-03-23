@@ -221,6 +221,7 @@ class fusionGene():
             aa_pos = self.__getattribute__(var_prefix+'_aa_pos')
             prot_info = DANSY_REFERENCE_DF[DANSY_REFERENCE_DF['UniProt ID'] == protOI]
             prot_fusion_contrib_ids = []
+            dropped_doms = []
                     
             # Check that the protein is in the reference file otherwise create a flag and break out of the loop
             if prot_info.empty:
@@ -228,6 +229,7 @@ class fusionGene():
                 self.errors.append('1:Missing domain annotations')
                 brk_flag = True
                 prot_fusion_contrib_ids = None
+                dropped_doms = None
                 continue
             else:
                 domains = prot_info['Interpro Domains'].str.split(';').tolist()[0]
@@ -240,13 +242,19 @@ class fusionGene():
                             fusion_arch.append(dom_info[1])
                             # Adding in the fusion protein contribution:
                             prot_fusion_contrib_ids.append(dom_info[1])
+                        else:
+                            dropped_doms.append(dom_info[1])
                     else:
                         if int(dom_info[2]) >= aa_pos - AA_BUFFER:
                             fusion_arch.append(dom_info[1])
                             prot_fusion_contrib_ids.append(dom_info[1])
+                        else:
+                            dropped_doms.append(dom_info[1])
 
             prot_fusion_contrib_ids = '|'.join(prot_fusion_contrib_ids)
+            dropped_doms = '|'.join(dropped_doms)
             self.__setattr__(var_prefix+'_contribution', prot_fusion_contrib_ids)
+            self.__setattr__(var_prefix+'_dropped_domains', dropped_doms)
 
         if brk_flag:
             self.domain_architecture = None
