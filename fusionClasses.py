@@ -14,10 +14,11 @@ EXON_INFO = pd.read_csv('Gene_exon_information.csv')
 EXON_INFO = EXON_INFO.groupby('Gene stable ID')
 GENE_CONVERSION = pd.read_csv('ENSEMBL_Gene_Conversion.csv')
 DANSY_REFERENCE_DF = dansy.import_proteome_files(ref_file_dir='data/Current_Human_Proteome',
-                                                 ref_file_suffix='2026_0108.csv')
+                                                 ref_file_suffix='2026_0324.csv')
 FUSION_POS_CONV = {5:'h', 3:'t'}
 NT_BUFFER = 500
-AA_BUFFER = 2
+AA_BUFFER_DF = pd.read_csv('domain_fusions_aa_buffers.csv', index_col = 0)
+AA_BUFFER_DICT = AA_BUFFER_DF.aa_buffer.to_dict()
 
 # Create a gene conversion dict to convert between ENSEMBL IDs and UniProt IDs
 ENSEMBL2UNIPROT = GENE_CONVERSION.filter(['Gene stable ID', 'UniProtKB/Swiss-Prot ID']).drop_duplicates()
@@ -237,8 +238,9 @@ class fusionGene():
             if domains and domains != ['']:
                 for d in domains:
                     dom_info = d.split(':')
+                    AA_BUFFER = AA_BUFFER_DICT[dom_info[1]]
                     if fusion_pos == 5:
-                        if int(dom_info[3]) <= aa_pos +AA_BUFFER:
+                        if int(dom_info[3]) <= aa_pos + AA_BUFFER:
                             fusion_arch.append(dom_info[1])
                             # Adding in the fusion protein contribution:
                             prot_fusion_contrib_ids.append(dom_info[1])
@@ -546,13 +548,13 @@ class fusionCollection():
                 cat = None
             else:
                 if gc[['Connected Components','New N-gram Count','Reintroduced N-grams', 'New Nodes','New Edges']].sum() == 0:
-                    cat = 'No Change'
+                    cat = 'Pre-existing'
                 elif gc['Connected Components'] == 0:
-                    cat = 'Reinforcement'
+                    cat = 'Novel: Shared'
                 elif gc['Connected Components'] > 0:
-                    cat = 'Bridges'
+                    cat = 'Novel: Obligate'
                 elif gc['Reintroduced N-grams'] > 0 and gc['Connected Components'] == -1:
-                    cat = 'Reintroduction'
+                    cat = 'Pre-existing' # Used to be a separate category but no longer keeping it, but keeping the skeleton for now
                 else:
                     cat = 'Double-check'
             
