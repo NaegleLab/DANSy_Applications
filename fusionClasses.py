@@ -295,7 +295,7 @@ class fusionGene():
         Creates a dictionary version of the fusion information.
         '''
         
-        attributes_4_output = ['id','name','h_gene', 't_gene','h_uniprot','t_uniprot','h_chr','t_chr','h_pos','t_pos','h_strand','t_strand', 'domain_architecture','dansy_impact'] + self.add_info_attribs
+        attributes_4_output = ['id','name','h_gene', 't_gene','h_uniprot','t_uniprot','h_chr','t_chr','h_pos','t_pos','h_strand','t_strand','h_contribution','t_contribution','domain_architecture','dansy_impact'] + self.add_info_attribs
         return {k:v for k,v in self.__dict__.items() if k in attributes_4_output}
 
 class fusionCollection():
