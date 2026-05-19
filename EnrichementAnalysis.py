@@ -8,22 +8,53 @@ from tqdm import tqdm
 import seaborn as sns
 import matplotlib.pyplot as plt
 import statsmodels.stats.multitest as multitest
+P_THRES = 0.001
+
 
 class EnrichmentAnalysis():
 
-    def __init__(self, df:pd.DataFrame, ngrams:list, mapper:dict, method:Literal['bh','by'] = 'bh'):
+    def __init__(self, df:pd.DataFrame, ngrams:list, mapper:dict, method:Literal['bh','by'] = 'bh', nulldist:pd.DataFrame = None):
         
         self.data = df
         self.ngrams = ngrams
         self.mapper = mapper
         self.method = method
         self.res = ngram_enrichment(df, ngrams, mapper, method)
+       
+        if nulldist is None:
+            self.null_check = False
+        else:
+            self.null_check = True
+            self.null_dist = nulldist
+            self.add_fpr()
+        
+        self.res.reset_index(inplace=True)
+        self.res.rename(columns = {'index':'ngram'}, inplace=True)
         self.ngram2idx = dict(zip(self.res.ngram, self.res.index))
+
+    def add_fpr(self):
+        fpr_res = []
+        for ngram in self.res.index:
+            if ngram in self.null_dist.index:
+                fpr = self.null_dist.loc[ngram].le(self.res.loc[ngram,'True_q']).sum()/self.null_dist.shape[1]
+            elif self.res.loc[ngram,'True_q'] >= P_THRES:
+                fpr = 1
+            else:
+                fpr = 0
+            
+            fpr_res.append(fpr)
+        self.res['fpr'] = fpr_res
+        self.res['fpr_sig'] = self.res.fpr.le(0.05)
 
     def get_enrichment(self, ngram):
         return self.res.loc[ngram]
     
     def plot(self,catOI, **kwargs):
+        if 'show_fpr' in kwargs:
+            if not self.null_check:
+                raise ValueError('An FPR dataset was not provided and the FPR cannot be shown in the waterfall plot.')
+
+
         waterfallplot_enrichment(self.res, cat = catOI, **kwargs)
         
 
@@ -81,12 +112,10 @@ def ngram_enrichment(df:pd.DataFrame, ngrams:list, columns:dict, fdr_method:str 
     for cat in cats_N.keys():
         res[cat+'_q'] = stats.false_discovery_control(res[cat], method = fdr_method)
 
-    res.reset_index(inplace=True)
-    res.rename(columns={'index':'ngram'},inplace=True)
 
     return res
 
-def waterfallplot_enrichment(dataOI:pd.DataFrame,cat, plot_adjusted = True, **kwargs):
+def waterfallplot_enrichment(dataOI:pd.DataFrame,cat, plot_adjusted = True, show_fpr = False, **kwargs):
 
     if plot_adjusted:
         col = cat+'_q'
@@ -97,7 +126,10 @@ def waterfallplot_enrichment(dataOI:pd.DataFrame,cat, plot_adjusted = True, **kw
     data[col] = data[col].apply(lambda x: -1*np.log10(x))
     data = data.sort_values(col, ascending=False)
 
-    sns.scatterplot(data, x = range(len(data)), y = col,edgecolor = None, color = 'deepskyblue', **kwargs)
+    if show_fpr:
+        sns.scatterplot(data, x = range(len(data)), y = col,edgecolor = None, hue = 'fpr_sig', **kwargs)
+    else:
+        sns.scatterplot(data, x = range(len(data)), y = col,edgecolor = None, color = 'deepskyblue', **kwargs)
     plt.xlabel('Rank')
     if plot_adjusted:
         plt.ylabel(r'$log_{10}$ p-adjusted')
@@ -125,5 +157,7 @@ def add_top_ngram_annotations(ax,df:pd.DataFrame, d:dansy.dansy,cat:str,plot_adj
                     (xoffset,yoffset[i]),
                     textcoords='offset points',
                     arrowprops={'arrowstyle':"-",
-                                'relpos':(0,0.5)},
+                                'relpos':(0,0.5),
+                                'lw':0.5},
+                                
                     )
