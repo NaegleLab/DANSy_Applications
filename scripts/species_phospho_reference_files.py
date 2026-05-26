@@ -2,6 +2,8 @@ from CoDIAC import InterPro, UniProt
 import CoDIAC
 import pandas as pd
 import requests
+import gzip
+from Bio import SeqIO
 
 from pybiomart import Dataset, Server
 
@@ -12,9 +14,9 @@ mart = servers['ENSEMBL_MART_ENSEMBL']
 py_list = ['IPR000980','IPR000242','IPR006020','IPR020635']
 
 #pST System
-pst_list = ['IPR001245','IPR006186','IPR001932','IPR004274','IPR001202','IPR023410','IPR000253','IPR001132','IPR001357','IPR002713']
+pst_list = ['IPR001245','IPR006186','IPR001932','IPR004274','IPR001202','IPR023410','IPR000253','IPR001132','IPR001357','IPR002713', 'IPR000719','IPR000340']
 
-fetch_data = 'May12_2025'
+fetch_data = '2026_0324'
 
 species_names = {'Homo sapiens':'H_sapiens',
                  'Mus musculus':'M_musculus',
@@ -41,108 +43,66 @@ special_case = {'Capsaspora owczarzaki (strain ATCC 30864)':'Capsaspora owczarza
                 'Acanthamoeba castellanii (strain ATCC 30010 / Neff)':'Acanthamoeba castellanii',
                 'Saccharomyces cerevisiae (strain ATCC 204508 / S288c)':'Saccharomyces cerevisiae'}
 
+species_information = {'Homo sapiens':['H_sapiens','UP000005640',9606],
+                 'Mus musculus':['M_musculus','UP000000589',10090],
+                 'Rattus norvegicus':['R_norvegicus','UP000002494',10116],
+                 'Oryctolagus cuniculus':['O_cuniculus','UP000001811',9986],
+                 'Gallus gallus':['G_gallus','UP000000539',9031],
+                 'Xenopus tropicalis':['X_tropicalis','UP000008143',8364],
+                 'Danio rerio':['D_rerio','UP000000437',7955],
+                 'Carassius auratus':['C_auratus','UP000515129',7957],
+                 'Ciona intestinalis':['C_intestinalis','UP000008144',7719],
+                 'Strongylocentrotus purpuratus':['S_purpuratus','UP000007110',7668],
+                 'Drosophila melanogaster':['D_melanogaster','UP000000803',7227],
+                 'Caenorhabditis elegans':['C_elegans', 'UP000001940', 6239],
+                 'Nematostella vectensis':['N_vectensis','UP000001593',45351],
+                 'Trichoplax adhaerens':['T_adhaerens','UP000009022',10228],
+                 'Monosiga brevicollis':['M_brevicollis','UP000001357',81824],
+                 'Capsaspora owczarzaki (strain ATCC 30864)':['C_owczarzaki','UP000008743',595528],
+                 'Sphaeroforma arctica JP610':['S_arctica','UP000054560',667725],
+                 'Acanthamoeba castellanii (strain ATCC 30010 / Neff)':['A_castellanii','UP000011083',1257118],
+                 'Dictyostelium discoideum':['D_discoideum','UP000002195',44689],
+                 'Saccharomyces cerevisiae (strain ATCC 204508 / S288c)':['S_cerevisiae','UP000002311',559292]}
+
 reviewed_species = ['Homo sapiens','Mus musculus','Rattus norvegicus',]
 
 # Now fetching the and generating the files
 for id_list, ptm_sys in zip([py_list,pst_list],['pTyr','pSerThr']):
     for species,spec_name in species_names.items():
         print('Starting fetching of IDs for %s'%species)
+        
+        # First let's load the species reference proteome as we will use that to reduce the uniprot ID list to the ones with highest confidence
+        full_proteome = set()
+        proteome_id = species_information[species][1]
+        taxon_id = species_information[species][2]
+        with gzip.open(f'data/reference_proteomes/{proteome_id}_{taxon_id}.fasta.gz','rt') as f:
+            for record in SeqIO.parse(f, 'fasta'):
+                full_proteome.add(record.id.split('|')[1])
+        
+        # Now getting the complete set of UniProt IDs
         comp_uniprots = set()
+        
         for Interpro_ID in id_list:
+            
             rev_flag =  species in reviewed_species
             if species not in special_case:
                 uniprot_IDs, uniprot_dict = CoDIAC.InterPro.fetch_uniprotids(Interpro_ID, REVIEWED=rev_flag, species=species)
             else:
                 spec_search = special_case[species]
                 uniprot_IDs, uniprot_dict = CoDIAC.InterPro.fetch_uniprotids(Interpro_ID, REVIEWED=rev_flag, species=spec_search)
-            
-            
-            # If a species is not one that has well reviewed UniProt entries go through and start cleaning up the IDs
-            if not rev_flag:
-                
-                uniprot_IDs = [v for v in uniprot_dict[species].values()]
-                uniprot_IDs = sum(uniprot_IDs,[])
+        
+            uniprot_IDs = [v for v in uniprot_dict[species].values()]
+            uniprot_IDs = sum(uniprot_IDs,[])
 
+            comp_uniprots.update(uniprot_IDs)
+            ids_removed = comp_uniprots.difference(full_proteome)
 
-                uniprot_cleaned = {}
-                ids_to_remove = []
+            if len(ids_removed) > 0:
+                print('A total of %d will be removed from the original ID list length of %d'%(len(ids_removed),len(uniprot_IDs)))
 
-                for ID in uniprot_IDs:
-                    url = f"https://rest.uniprot.org/uniprotkb/{ID}?fields=accession,gene_primary,protein_existence,xref_ensembl,xref_refseq,length,xref_geneid"
-                    get_url = requests.get(url)
-                    response = get_url.json()
+            # Removing the redundant uniprot IDs
+            comp_uniprots = comp_uniprots.intersection(full_proteome)
 
-                    # First grabbing a few key values
-                    review = response['entryType']
-                    prot_exist = int(response['proteinExistence'][0]) #First character is always the number
-                    refseq = False
-                    ncbi_geneID = False
-                    ensembl = []
-
-                    # For all UniProt IDs an ENSEMBL, RefSeq or GeneID entry must exist as those are the entries associated with actual genes while others will be redundant entries corresponding to mRNA molecules that may be partial CDS
-
-                    if response['uniProtKBCrossReferences']:
-                    
-                        for i in range(len(response['uniProtKBCrossReferences'])):
-                            if response['uniProtKBCrossReferences'][i]['database'] == 'RefSeq':
-                                refseq = True
-                            
-                            if response['uniProtKBCrossReferences'][i]['database'] == 'Ensembl':
-                                if response['uniProtKBCrossReferences'][i]['properties'][1]['value']:
-                                    ensembl = response['uniProtKBCrossReferences'][i]['properties'][1]['value']
-                            
-                            if response['uniProtKBCrossReferences'][i]['database'] == 'GeneID':
-                                ncbi_geneID = True
-
-                    if refseq or ncbi_geneID or ensembl or review == 'UniProtKB reviewed (Swiss-Prot)':
-
-                        # If there was not an ensembl ID then changing it to the gene name
-                        if not ensembl:
-                            if 'genes' in response.keys():
-                                try:
-                                    ensembl = response['genes'][0]['geneName']['value']
-                                except:
-                                    ensembl = ID
-                            else:
-                                ensembl = ID
-                            
-                        entry_len = response['sequence']['length']
-                        temp_dict = {'review':review,'existence':prot_exist, 'refseq status':refseq, 'protein length':entry_len, 'ID':ID}
-
-                        # Setting up a comparison if the ensembl ID does not already exist
-                        if ensembl in uniprot_cleaned:
-                            # first checking review status which takes ultimate precedence
-                            if uniprot_cleaned[ensembl]['review'] != 'UniProtKB reviewed (Swiss-Prot)':
-                                if review == 'UniProtKB reviewed (Swiss-Prot)':
-                                    ids_to_remove.append(uniprot_cleaned[ensembl]['ID'])
-                                    uniprot_cleaned[ensembl] = temp_dict.copy()
-                                elif prot_exist < uniprot_cleaned[ensembl]['existence']:
-                                    ids_to_remove.append(uniprot_cleaned[ensembl]['ID'])
-                                    uniprot_cleaned[ensembl] = temp_dict.copy()
-                                elif refseq and not uniprot_cleaned[ensembl]['refseq status']:
-                                    ids_to_remove.append(uniprot_cleaned[ensembl]['ID'])
-                                    uniprot_cleaned[ensembl] = temp_dict.copy()
-                                elif entry_len > uniprot_cleaned[ensembl]['protein length']:
-                                    ids_to_remove.append(uniprot_cleaned[ensembl]['ID'])
-                                    uniprot_cleaned[ensembl] = temp_dict.copy()
-                                else:
-                                    ids_to_remove.append(ID)
-                            else:
-                                ids_to_remove.append(ID)
-                                        
-                        else:
-                            uniprot_cleaned[ensembl] = temp_dict.copy()
-                    else:
-                        ids_to_remove.append(ID)
-
-                if len(ids_to_remove) > 0:
-                    print('A total of %d will be removed from the original ID list length of %d'%(len(ids_to_remove),len(uniprot_IDs)))
-
-                # Removing the redundant uniprot IDs
-                nonredundant_IDs = [id for id in uniprot_IDs if id not in ids_to_remove]
-                comp_uniprots.update(nonredundant_IDs)
-            else:
-                comp_uniprots.update(uniprot_IDs)
             
         print('Generating the Reference File')
         reference_File = 'data/Current_Multispecies_Files/'+spec_name+'Full_'+ptm_sys+'_System_Reference_File_'+fetch_data+'.csv'
