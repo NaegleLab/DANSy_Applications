@@ -136,9 +136,9 @@ def waterfallplot_enrichment(dataOI:pd.DataFrame,cat, plot_adjusted = True, show
     else:
         plt.ylabel(r'$log_{10}$ p')
 
-def add_top_ngram_annotations(ax,df:pd.DataFrame, d:dansy.dansy,cat:str,plot_adjusted = True, n:int = 10, yoffset:list = None):
+def add_top_ngram_annotations(ax,df:pd.DataFrame, d:dansy.dansy,cat:str,plot_adjusted = True, n:int = 10, yoffset:list = None, **kwargs):
     
-    xoffset = 20
+    xoffset = 10
     if yoffset is None:
         yoffset = [3]*(n+1)
     
@@ -159,5 +159,5 @@ def add_top_ngram_annotations(ax,df:pd.DataFrame, d:dansy.dansy,cat:str,plot_adj
                     arrowprops={'arrowstyle':"-",
                                 'relpos':(0,0.5),
                                 'lw':0.5},
-                                
+                    **kwargs       
                     )
