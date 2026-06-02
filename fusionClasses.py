@@ -304,13 +304,13 @@ class fusionCollection():
     
     '''
 
-    def __init__(self, x, mapper, add_cols=None, silent=False):
+    def __init__(self, x, mapper, add_cols=None, silent=False,detailed_novel = False):
         if isinstance(x, pd.DataFrame):
-            self.from_df(x,mapper=mapper,add_cols = add_cols, silent=silent)
+            self.from_df(x,mapper=mapper,add_cols = add_cols, silent=silent,detailed_novel = detailed_novel)
         else:
             raise TypeError('Currently unsupported type has been provided.')
 
-    def from_df(self,df:pd.DataFrame, mapper:dict,add_cols:list = None, silent = False):
+    def from_df(self,df:pd.DataFrame, mapper:dict,add_cols:list = None, silent = False, detailed_novel = False):
         '''
         Builds the collection from a pandas DataFrame. 
 
@@ -322,6 +322,8 @@ class fusionCollection():
             Key-value pairs that map column names to parameters necessary to build fusionGene objects. Acceptable keys are: h_gene, t_gene, h_/t_chr, h_/t_pos, h_/t_strand, name, genome_build, id.
         - silent: bool
             Whether initial errors in fusion gene formation should result in an error or only log message.
+        - simple_novel: bool
+            Whether the analysis should provide only a simple version of the novel domain architecture analysis or go into a deeper subcategory.
         '''
 
         required_keys = ['name','h_gene','t_gene','h_chr','t_chr','h_pos', 't_pos']
@@ -341,6 +343,9 @@ class fusionCollection():
                 print('Duplicated IDs detected in the provided ID column will create a new set of IDs')
             else:
                 create_unique_ids = False
+        
+        # Creating a parameter on the flag for whether we want a simple analysis of the novel domain architectures or not
+        self.detailed_novel = detailed_novel
 
         # Now create the collection and create a dict for each unique fusion name
         self.fusion_list = {}
@@ -385,7 +390,7 @@ class fusionCollection():
         
     def get_dansy_impacts(self, dansy_obj, debug_flag = False):
 
-        # First go through and get the unique domain architectures wihtin the collection and get lists of fusions for each
+        # First go through and get the unique domain architectures within the collection and get lists of fusions for each
         uni_archs = {}
         for f in self.fusion_list.values():
             if f.domain_architecture not in uni_archs:
@@ -401,7 +406,10 @@ class fusionCollection():
             pbar = tqdm(total=len(uni_archs.keys()))
         for arch, reps in uni_archs.items():
             if arch is not None:
-                gc,skipped = self.calc_network_change(arch, dansy_obj, reps[0], debug_flag)
+                if self.detailed_novel:
+                    gc,skipped = self.calc_network_change(arch, dansy_obj, reps[0], debug_flag)
+                else:
+                    gc,skipped = self.simple_net_change(arch, dansy_obj, reps[0], debug_flag)
                 gc_dict[arch] = gc
 
                 if skipped:
@@ -441,15 +449,14 @@ class fusionCollection():
             printed statement of how many domain architectures were skipped.
         '''
 
-        # from the dansy object getting the adjacency matrix and some key gross topology information
-
+        # Get the existing n-grams
         removed_ngrams = proteome_dansy.collapsed_ngrams
         existing_ngrams = proteome_dansy.ngrams
-        num_cats = ['Connected Components','New N-gram Count','Reintroduced N-grams', 'New Nodes','New Edges']
+        num_cats = ['Connected Components','New N-gram Count','Reintroduced N-grams', 'New Nodes']
         if debug_flag:
-            gross_changes = pd.Series(index = ['Connected Components','New N-gram Count','Reintroduced N-grams', 'New Nodes','New Edges','New n-grams', 'Reintroduced N-grams List'])
+            gross_changes = pd.Series(index = ['Connected Components','New N-gram Count','Reintroduced N-grams', 'New Nodes','New n-grams', 'Reintroduced N-grams List'])
         else:
-            gross_changes = pd.Series(index = ['Connected Components','New N-gram Count','Reintroduced N-grams', 'New Nodes','New Edges'],dtype=int).fillna(0)
+            gross_changes = pd.Series(index = ['Connected Components','New N-gram Count','Reintroduced N-grams', 'New Nodes'],dtype=int).fillna(0)
         skipped = False # Keeping count of how many are skipped for the entire dataset
 
             
@@ -466,6 +473,7 @@ class fusionCollection():
             # Here making sure we only focus on n-grams up to the maximum length of the dansy network
             fusion_ngrams = [f for f in fusion_ngrams if len(f.split('|')) <= proteome_dansy.n]
 
+            # Getting n-grams that were in the collapsed n-grams of the proteome
             ngram_to_return = list(set(fusion_ngrams).intersection(removed_ngrams))
             new_ngrams = set(fusion_ngrams).difference(existing_ngrams).difference(ngram_to_return)
             ngrams_to_remove = []
@@ -499,7 +507,6 @@ class fusionCollection():
             # Due to ease adding in the reintroduced n-grams but keeping track of the actual new ones
             new_ngrams_orig = new_ngrams.copy()
             new_ngrams = new_ngrams.union(ngram_to_return)
-            new_edge = 0
             
             if new_ngrams_orig: # If there were any new n-grams going through and checking all the fusion n-grams to determine which connected components were impacted.
                 
@@ -530,7 +537,6 @@ class fusionCollection():
             # Outputting the changes
             gross_changes['Connected Components'] = cc_val
             gross_changes['New Nodes'] = len(new_ngrams)
-            gross_changes['New Edges'] = new_edge
 
             if debug_flag:
                 gross_changes['New n-grams'] = list(new_ngrams)
@@ -541,20 +547,27 @@ class fusionCollection():
     def categorize_dansy_impact(self):
 
         self.fusion_arch_impacts = {}
+        
         for arch, gc in self.gc_dict.items():
             if arch == '':
                 cat = 'No Annotation'
             elif arch is None:
                 cat = None
             else:
-                if gc[['Connected Components','New N-gram Count','Reintroduced N-grams', 'New Nodes','New Edges']].sum() == 0:
+                if gc.sum() == 0:
                     cat = 'Pre-existing'
-                elif gc['Connected Components'] == 0:
-                    cat = 'Novel: Shared'
-                elif gc['Connected Components'] > 0:
-                    cat = 'Novel: Obligate'
-                elif gc['Reintroduced N-grams'] > 0 and gc['Connected Components'] == -1:
-                    cat = 'Pre-existing' # Used to be a separate category but no longer keeping it, but keeping the skeleton for now
+                elif gc['New N-gram Count'] > 0:
+                    if self.detailed_novel:
+                        if gc['Connected Components'] == 0:
+                            cat = 'Novel: Shared'
+                        elif gc['Connected Components'] > 0:
+                            cat = 'Novel: Obligate'
+                        else:
+                            cat = 'Double-check'
+                    else:
+                        cat = 'Novel'
+                elif gc['Reintroduced N-grams'] > 0 and gc['New N-gram Count'] == 0:
+                    cat = 'Pre-existing'
                 else:
                     cat = 'Double-check'
             
@@ -568,7 +581,74 @@ class fusionCollection():
                 f._set_impact(self.fusion_arch_impacts[f.domain_architecture])
             else:
                 f._set_impact(None)
-                
+
+    def simple_net_change(self, arch,proteome_dansy:dansy.dansy,rep:str, debug_flag = False):
+        '''
+        A simplified version of the dansy impacts function. This only goes through and checks for how many new and pre-existing n-grams there are.
+        '''
+        # Get the existing n-grams
+        removed_ngrams = proteome_dansy.collapsed_ngrams
+        existing_ngrams = proteome_dansy.ngrams
+        preexisting_ngrams = set(removed_ngrams).union(existing_ngrams)
+        num_cats = ['New N-gram Count','Reintroduced N-grams']
+        if debug_flag:
+            gross_changes = pd.Series(index = ['New N-gram Count','Reintroduced N-grams', 'New n-grams', 'Reintroduced N-grams List'])
+        else:
+            gross_changes = pd.Series(index = num_cats,dtype=int).fillna(0)
+        skipped = False # Keeping count of how many are skipped for the entire dataset
+
+            
+        if arch in existing_ngrams or arch == '':
+            gross_changes[num_cats] = 0
+            skipped = True
+        
+        else:
+            
+            # Checking if any of the n-grams have been removed previously
+            f = self.get_fusion(rep)
+            fusion_ngrams = f.ngrams
+
+            # Here making sure we only focus on n-grams up to the maximum length of the dansy network
+            fusion_ngrams = [f for f in fusion_ngrams if len(f.split('|')) <= proteome_dansy.n]
+
+            # Getting n-grams that were in the collapsed n-grams of the proteome
+            ngram_to_return = list(set(fusion_ngrams).intersection(removed_ngrams))
+            new_ngrams = set(fusion_ngrams).difference(preexisting_ngrams)
+            ngrams_to_remove = []
+            
+            # Checking for any n-grams that can be subsumed by a longer n-gram and then removing it
+            for gram in ngram_to_return:
+                for inner_gram in ngram_to_return:
+                    if gram != inner_gram and gram in inner_gram and len(gram.split('|')) > 1:
+                        ngrams_to_remove.append(gram)
+
+            if ngrams_to_remove:
+                ngrams_to_remove = set(ngrams_to_remove)
+                ngram_to_return = list(set(ngram_to_return).difference(ngrams_to_remove))
+                #ngram_to_return = [x for x in ngram_to_return if x not in ngrams_to_remove]
+            
+            # Checking if any of the new n-grams can be subsumed by a longer new n-gram that was also added
+            ngrams_to_remove = []
+            for gram in new_ngrams:
+                for inner_gram in new_ngrams:
+                    if gram != inner_gram and gram in inner_gram:
+                        ngrams_to_remove.append(gram)
+
+            if ngrams_to_remove:
+                ngrams_to_remove = set(ngrams_to_remove)
+                new_ngrams = set([x for x in new_ngrams if x not in ngrams_to_remove])
+
+            # Saving the easy gross topological changes 
+            gross_changes['Reintroduced N-grams'] = len(ngram_to_return)
+            gross_changes['New N-gram Count'] = len(new_ngrams)
+               
+            if debug_flag:
+                gross_changes['New n-grams'] = list(new_ngrams)
+                gross_changes['Reintroduced N-grams List'] = list(ngram_to_return)
+
+        return gross_changes, skipped
+    
+
 
     def perform_dansy_analysis(self, dansy_obj, debug_flag = False):
         self.get_dansy_impacts(dansy_obj=dansy_obj,debug_flag=debug_flag)
