@@ -132,3 +132,13 @@ dmypy.json
 .Rhistory
 .RData
 .Ruserdata
+
+# Folders and files that are generated and fetched but do not need to be tracked
+Figures/Manuscript
+data/reference_proteomes
+CCLE_Model.csv
+CCLE_OmicsFusionFiltered*
+CRISPRGeneEffect.csv
+ChimerSeq4.xlsx
+tcga_clinical_data.tsv
+*.SwissProt
