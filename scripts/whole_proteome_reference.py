@@ -5,7 +5,7 @@ from pybiomart import Dataset, Server
 import os
 
 # Change these according to current build of each reference file as desired.
-file_suffix = 'Reference_File_2026_0108.csv' # Change this to the current date
+file_suffix = 'Reference_File_2026_0324.csv' # Change this to the current date
 ensembl_file = 'ENSEMBL_Gene_Conversion.csv'
 gencode = pd.read_table('gencode.v49.metadata.SwissProt',header=None) # Ensure this is the gencode version file that has been downloaded
 full_human_uniprot_file = 'uniprot_id_gene_names.tsv'
@@ -15,7 +15,6 @@ data_folder = 'data/Current_Human_Proteome/'
 
 # Change these if you want slightly different behavior
 single_file = True # Change if you want to spread the proteome reference files across multiple files
-#method = 'gencode' # We recommend gencode due to stability in cross references but can also use pybiomart
 
 # If pybiomart is to used these are the commands that will retrieve UniProt IDs
 if os.path.exists(ensembl_file):
