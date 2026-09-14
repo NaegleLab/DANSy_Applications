@@ -1,7 +1,7 @@
 import subprocess
 
 # This is fetching the reference proteomes for the species of interest in the DANSy PTM analysis
-fetch_date = '2026_0324'
+fetch_date = '2026_0820'
 
 # This is the uniprot ftp server that we are getting the canonical, reference proteomes from which have 1 UniProt ID per gene
 ftp_server = 'https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/reference_proteomes/Eukaryota/'

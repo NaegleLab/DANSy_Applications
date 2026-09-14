@@ -1,13 +1,12 @@
 from CoDIAC import UniProt,InterPro
-import CoDIAC
 import pandas as pd
 from pybiomart import Dataset, Server
 import os
 
 # Change these according to current build of each reference file as desired.
-file_suffix = 'Reference_File_2026_0324.csv' # Change this to the current date
+file_suffix = 'Reference_File_2026_0820.csv' # Change this to the current date
 ensembl_file = 'ENSEMBL_Gene_Conversion.csv'
-gencode = pd.read_table('gencode.v49.metadata.SwissProt',header=None) # Ensure this is the gencode version file that has been downloaded
+gencode = pd.read_table('gencode.v50.metadata.SwissProt.gz',header=None) # Ensure this is the gencode version file that has been downloaded
 full_human_uniprot_file = 'uniprot_id_gene_names.tsv'
 
 # Current Interpro File Data Folder
@@ -74,18 +73,18 @@ if rm_files:
 if single_file:
     # Final set of IDs that are missing
     ref_file_name = data_folder+'Proteome_'+str(cnt)+'_'+file_suffix
-    uniprot_df = CoDIAC.UniProt.makeRefFile(uniprot_ids, ref_file_name)
+    uniprot_ids = sorted(uniprot_ids)
+    uniprot_df = UniProt.makeRefFile(uniprot_ids, ref_file_name)
 else:
     # Note for everything below the 300 IDs is once UniProt starts to throw out exceptions.
     currently_retrieved = set()
     for x in range(0,round(len(uniprot_ids)/300)):
         a = uniprot_ids[x*300:300*(x+1)]
         ref_file_name = data_folder+'Proteome_'+str(cnt)+'_'+file_suffix
-        uniprot_df = CoDIAC.UniProt.makeRefFile(a, ref_file_name)
+        uniprot_df = UniProt.makeRefFile(a, ref_file_name)
         cnt += 1
         currently_retrieved.update(a)
 
     # Final set of IDs that are missing
-    a = set(uniprot_ids).difference(currently_retrieved)
     ref_file_name = data_folder+'Proteome_'+str(cnt)+'_'+file_suffix
-    uniprot_df = CoDIAC.UniProt.makeRefFile(a, ref_file_name)
+    uniprot_df = UniProt.makeRefFile(a, ref_file_name)
