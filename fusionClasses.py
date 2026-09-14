@@ -13,9 +13,8 @@ EXON_INFO = pd.read_csv('Gene_exon_information.csv')
 EXON_INFO = EXON_INFO.groupby('Gene stable ID')
 GENE_CONVERSION = pd.read_csv('ENSEMBL_Gene_Conversion.csv')
 DANSY_REFERENCE_DF = dansy.import_proteome_files(ref_file_dir='data/Current_Human_Proteome',
-                                                 ref_file_suffix='2026_0324.csv')
+                                                 ref_file_suffix='2026_0715.csv')
 FUSION_POS_CONV = {5:'h', 3:'t'}
-NT_BUFFER = 500
 AA_BUFFER_DF = pd.read_csv('domain_fusions_aa_buffers.csv', index_col = 0)
 AA_BUFFER_DICT = AA_BUFFER_DF.aa_buffer.to_dict()
 
